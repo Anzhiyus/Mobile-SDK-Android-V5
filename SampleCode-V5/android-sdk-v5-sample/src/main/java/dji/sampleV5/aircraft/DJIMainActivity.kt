@@ -41,19 +41,19 @@ abstract class DJIMainActivity : AppCompatActivity() {
         Manifest.permission.ACCESS_FINE_LOCATION,
     )
 
-    init {
-        permissionArray.apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                add(Manifest.permission.READ_MEDIA_IMAGES)
-                add(Manifest.permission.READ_MEDIA_VIDEO)
-                add(Manifest.permission.READ_MEDIA_AUDIO)
-            } else {
-                add(Manifest.permission.READ_EXTERNAL_STORAGE)
-                add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            }
-
-        }
-    }
+//    init {
+//        permissionArray.apply {
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+//                add(Manifest.permission.READ_MEDIA_IMAGES)
+//                add(Manifest.permission.READ_MEDIA_VIDEO)
+//                add(Manifest.permission.READ_MEDIA_AUDIO)
+//            } else {
+//                add(Manifest.permission.READ_EXTERNAL_STORAGE)
+//                add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+//            }
+//
+//        }
+//    }
 
     private val baseMainActivityVm: BaseMainActivityVm by viewModels()
     private val msdkInfoVm: MSDKInfoVm by viewModels()

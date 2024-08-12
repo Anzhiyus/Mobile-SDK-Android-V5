@@ -28,5 +28,6 @@ class DJIAircraftMainActivity : DJIMainActivity() {
 
     override fun prepareTestingToolsActivity() {
         enableTestingTools(AircraftTestingToolsActivity::class.java)
+        enableDroneFly(DroneActivity::class.java)
     }
 }

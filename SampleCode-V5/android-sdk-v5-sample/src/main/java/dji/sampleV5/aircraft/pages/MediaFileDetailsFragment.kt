@@ -155,6 +155,7 @@ class MediaFileDetailsFragment : DJIFragment(), View.OnClickListener {
         val outputStream = FileOutputStream(file, true)
         val bos = BufferedOutputStream(outputStream)
         var beginTime = System.currentTimeMillis()
+        // 从摄像头中下载文件，并实现一个匿名 MediaFileDownloadListener，用于处理下载过程的各种事件
         mediaFile?.pullOriginalMediaFileFromCamera(offset, object : MediaFileDownloadListener {
             override fun onStart() {
                 showProgress()

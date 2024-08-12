@@ -103,6 +103,7 @@ class MediaFragment : DJIFragment() {
             }
 
         }
+        // 获取文件列表
         btn_refresh_file_list.setOnClickListener() {
             val fetchCount = if (TextUtils.isEmpty(fetchCount.text.toString())) {
                 -1  //all
@@ -115,6 +116,7 @@ class MediaFragment : DJIFragment() {
             } else {
                 mediaIndex.text.toString().toInt()
             }
+            // 从摄像头中获取指定数量和从指定索引开始的媒体文件
             mediaVM.pullMediaFileListFromCamera(mediaFileIndex, fetchCount)
         }
 
@@ -249,5 +251,17 @@ class MediaFragment : DJIFragment() {
             mediaVM.disable()
         }
         adapter = null
+    }
+
+    fun take_photo(){
+        mediaVM.takePhoto(object : CommonCallbacks.CompletionCallback {
+            override fun onSuccess() {
+                dji.sampleV5.aircraft.util.ToastUtils.showToast("take photo success")
+            }
+
+            override fun onFailure(error: IDJIError) {
+                dji.sampleV5.aircraft.util.ToastUtils.showToast("take photo failed")
+            }
+        })
     }
 }

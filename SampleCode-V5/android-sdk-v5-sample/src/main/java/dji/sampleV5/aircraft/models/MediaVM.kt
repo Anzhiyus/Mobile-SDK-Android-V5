@@ -168,9 +168,12 @@ class MediaVM : DJIViewModel() {
     }
 
     fun takePhoto(callback: CommonCallbacks.CompletionCallback) {
+        // 设置相机模式
         RxUtil.setValue(createKey<CameraMode>(
             CameraKey.KeyCameraMode), CameraMode.PHOTO_NORMAL)
+            // 执行拍照步骤
             .andThen(RxUtil.performActionWithOutResult(createKey(CameraKey.KeyStartShootPhoto)))
+            // 执行结果
             .subscribe({ CallbackUtils.onSuccess(callback) }
             ) { throwable: Throwable ->
                 CallbackUtils.onFailure(

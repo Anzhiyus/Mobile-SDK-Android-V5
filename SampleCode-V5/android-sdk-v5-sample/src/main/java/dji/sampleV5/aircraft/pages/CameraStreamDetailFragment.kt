@@ -173,6 +173,7 @@ class CameraStreamDetailFragment : Fragment() {
                 if (selectedIndex[0] >= 0) {
                     val format = SUPPORT_YUV_FORMAT[formatList[selectedIndex[0]]]
                     val name =  formatList[selectedIndex[0]]
+                    // downloadYUVImageToLocal 函数添加 addFrameListener 帧监听器
                     viewModel.downloadYUVImageToLocal(format!!,name)
                 }
                 dialog.dismiss()

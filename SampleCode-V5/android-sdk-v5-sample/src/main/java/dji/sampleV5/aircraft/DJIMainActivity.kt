@@ -184,6 +184,10 @@ abstract class DJIMainActivity : AppCompatActivity() {
         enableShowCaseButton(testing_tool_button, cl)
     }
 
+    fun <T> enableDroneFly(cl: Class<T>) {
+        enableShowCaseButton(drone_fly_button, cl)
+    }
+
     private fun <T> enableShowCaseButton(view: View, cl: Class<T>) {
         view.isEnabled = true
         view.setOnClickListener {

@@ -56,8 +56,10 @@ class MediaFragment : DJIFragment() {
             mediaVM.init()
             isload = true
         }
+        // mediaFileListData 通过 mediaVM.pullMediaFileListFromCamera(mediaFileIndex, fetchCount) 更新
         adapter = MediaListAdapter(mediaVM.mediaFileListData.value?.data!!, ::onItemClick)
         media_recycle_list.adapter = adapter
+        // 通过 observe 方法监听 mediaFileListData 的变化，当数据发生变化时更新 adapter 的数据。
         mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
             adapter!!.notifyDataSetChanged()
             tv_list_count.text = "Count:${it.data.size}"
@@ -116,8 +118,9 @@ class MediaFragment : DJIFragment() {
             } else {
                 mediaIndex.text.toString().toInt()
             }
-            // 从摄像头中获取指定数量和从指定索引开始的媒体文件
+            // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
             mediaVM.pullMediaFileListFromCamera(mediaFileIndex, fetchCount)
+            var isloada = false
         }
 
         btn_select.setOnClickListener {
@@ -125,7 +128,21 @@ class MediaFragment : DJIFragment() {
                 return@setOnClickListener
             }
             adapter?.selectionMode = !adapter?.selectionMode!!
-            clearSelectFiles()
+
+            // SPF：默认选中第一个项（如果还未被选中）
+            if (adapter?.selectionMode == true) {
+                // 确保列表不为空，并且默认选择第一个项（如果未被选择）
+                if (!adapter?.mSelectedItems?.contains(adapter?.data?.get(0))!!) {
+                    adapter?.mSelectedItems?.add(adapter?.data?.get(0)!!)
+//                    adapter?.notifyDataSetChanged()
+                }
+            } else {
+                // 当退出选择模式时，可以进行必要的清理操作（如果需要）
+                adapter?.mSelectedItems?.clear()
+            }
+
+
+//            clearSelectFiles()  // SPF：注释和上边else
             btn_select.setText(
                 if (adapter?.selectionMode!!) {
                     R.string.unselect_files
@@ -263,5 +280,12 @@ class MediaFragment : DJIFragment() {
                 dji.sampleV5.aircraft.util.ToastUtils.showToast("take photo failed")
             }
         })
+    }
+
+    fun download_photo(){
+        val mediafiles = ArrayList<MediaFile>()
+        if (adapter?.getSelectedItems()?.size != 0)
+            mediafiles.addAll(adapter?.getSelectedItems()!!)
+        mediaVM.downloadMediaFile(mediafiles)
     }
 }

@@ -33,6 +33,14 @@ class MediaListAdapter(
     val mSelectedItems: ArrayList<MediaFile> = ArrayList<MediaFile>()
     var selectionMode : Boolean = false
 
+//    // SPF：默认选中第一个文件（如果列表不为空）
+//    init {
+//        // 默认选中第一个文件（如果列表不为空）
+//        if (data.isNotEmpty()) {
+//            mSelectedItems.add(data[0])
+//        }
+//    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val view: View =
             LayoutInflater.from(parent.context).inflate(R.layout.item_mediafile_list, parent, false)

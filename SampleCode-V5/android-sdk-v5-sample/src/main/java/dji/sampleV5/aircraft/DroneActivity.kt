@@ -34,7 +34,7 @@ class DroneActivity : AppCompatActivity() {
         }
 
         btn_download.setOnClickListener {
-            myFragment.take_photo()
+            myFragment.download_photo()
         }
 
     }

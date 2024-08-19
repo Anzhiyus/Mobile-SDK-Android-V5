@@ -129,20 +129,7 @@ class MediaFragment : DJIFragment() {
             }
             adapter?.selectionMode = !adapter?.selectionMode!!
 
-            // SPF：默认选中第一个项（如果还未被选中）
-            if (adapter?.selectionMode == true) {
-                // 确保列表不为空，并且默认选择第一个项（如果未被选择）
-                if (!adapter?.mSelectedItems?.contains(adapter?.data?.get(0))!!) {
-                    adapter?.mSelectedItems?.add(adapter?.data?.get(0)!!)
-//                    adapter?.notifyDataSetChanged()
-                }
-            } else {
-                // 当退出选择模式时，可以进行必要的清理操作（如果需要）
-                adapter?.mSelectedItems?.clear()
-            }
-
-
-//            clearSelectFiles()  // SPF：注释和上边else
+            clearSelectFiles()  // SPF：注释和上边else
             btn_select.setText(
                 if (adapter?.selectionMode!!) {
                     R.string.unselect_files
@@ -283,9 +270,43 @@ class MediaFragment : DJIFragment() {
     }
 
     fun download_photo(){
-        val mediafiles = ArrayList<MediaFile>()
-        if (adapter?.getSelectedItems()?.size != 0)
-            mediafiles.addAll(adapter?.getSelectedItems()!!)
-        mediaVM.downloadMediaFile(mediafiles)
+        // 获取文件列表
+        // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
+        mediaVM.pullMediaFileListFromCamera(-1, 1)
+
+        // 选择文件
+        adapter?.selectionMode = !adapter?.selectionMode!!
+        clearSelectFiles()  // SPF：注释和上边else
+
+        // 你可以在 mediaFileListData 更新后再处理选择逻辑，以确保数据已经更新
+        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
+            adapter?.notifyDataSetChanged()
+            tv_list_count.text = "Count:${it.data.size}"
+
+            // 默认选中第一个项
+            if (adapter?.selectionMode == true && adapter?.data?.isNotEmpty() == true) {
+                val firstItem = adapter?.data?.get(0)
+                if (!adapter?.mSelectedItems?.contains(firstItem)!!) {
+                    adapter?.mSelectedItems?.add(firstItem!!)
+                }
+            }
+
+            // 下载文件
+            val mediafiles = ArrayList<MediaFile>()
+            if (adapter?.getSelectedItems()?.size != 0)
+                mediafiles.addAll(adapter?.getSelectedItems()!!)
+            mediaVM.downloadMediaFile(mediafiles)
+        }
+
+////        adapter!!.notifyDataSetChanged()
+//        // SPF：默认选中第一个项（如果还未被选中）
+//        if (adapter?.selectionMode == true) {
+//            // 确保列表不为空，并且默认选择第一个项（如果未被选择）
+//            if (!adapter?.mSelectedItems?.contains(adapter?.data?.get(0))!!) {
+//                adapter?.mSelectedItems?.add(adapter?.data?.get(0)!!)
+//            }
+//        }
+
+
     }
 }

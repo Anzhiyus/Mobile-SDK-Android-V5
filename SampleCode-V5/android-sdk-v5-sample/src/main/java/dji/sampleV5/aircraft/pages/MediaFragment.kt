@@ -1,5 +1,6 @@
 package dji.sampleV5.aircraft.pages
 
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.text.TextUtils
 import android.view.LayoutInflater
@@ -23,8 +24,26 @@ import dji.v5.common.error.IDJIError
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.datacenter.media.MediaFile
 import dji.v5.manager.datacenter.media.MediaFileListState
-import kotlinx.android.synthetic.main.frag_media_page.*
-import java.util.ArrayList
+import kotlinx.android.synthetic.main.frag_media_page.btn_delete
+import kotlinx.android.synthetic.main.frag_media_page.btn_disable_playback
+import kotlinx.android.synthetic.main.frag_media_page.btn_download
+import kotlinx.android.synthetic.main.frag_media_page.btn_enable_playback
+import kotlinx.android.synthetic.main.frag_media_page.btn_format
+import kotlinx.android.synthetic.main.frag_media_page.btn_get_xmp_custom_info
+import kotlinx.android.synthetic.main.frag_media_page.btn_refresh_file_list
+import kotlinx.android.synthetic.main.frag_media_page.btn_select
+import kotlinx.android.synthetic.main.frag_media_page.btn_set_xmp_custom_info
+import kotlinx.android.synthetic.main.frag_media_page.btn_take_photo
+import kotlinx.android.synthetic.main.frag_media_page.fetchCount
+import kotlinx.android.synthetic.main.frag_media_page.fetch_progress
+import kotlinx.android.synthetic.main.frag_media_page.mediaIndex
+import kotlinx.android.synthetic.main.frag_media_page.media_recycle_list
+import kotlinx.android.synthetic.main.frag_media_page.sp_choose_component
+import kotlinx.android.synthetic.main.frag_media_page.sp_choose_storage
+import kotlinx.android.synthetic.main.frag_media_page.tv_get_list_state
+import kotlinx.android.synthetic.main.frag_media_page.tv_list_count
+import kotlinx.android.synthetic.main.frag_media_page.tv_playback
+
 
 /**
  * @author feel.feng
@@ -269,7 +288,8 @@ class MediaFragment : DJIFragment() {
         })
     }
 
-    fun download_photo(){
+    fun download_photo() : Bitmap? {
+        var bitmap: Bitmap? = null
         // 获取文件列表
         // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
         mediaVM.pullMediaFileListFromCamera(-1, 1)
@@ -295,18 +315,40 @@ class MediaFragment : DJIFragment() {
             val mediafiles = ArrayList<MediaFile>()
             if (adapter?.getSelectedItems()?.size != 0)
                 mediafiles.addAll(adapter?.getSelectedItems()!!)
-            mediaVM.downloadMediaFile(mediafiles)
+            bitmap = mediaVM.downloadMediaFileBitmap(mediafiles)
         }
+        return bitmap
+    }
 
-////        adapter!!.notifyDataSetChanged()
-//        // SPF：默认选中第一个项（如果还未被选中）
-//        if (adapter?.selectionMode == true) {
-//            // 确保列表不为空，并且默认选择第一个项（如果未被选择）
-//            if (!adapter?.mSelectedItems?.contains(adapter?.data?.get(0))!!) {
-//                adapter?.mSelectedItems?.add(adapter?.data?.get(0)!!)
-//            }
-//        }
+    fun downloadPhotoByteArray() : ByteArray? {
+        var bitmap: ByteArray? = null
+        // 获取文件列表
+        // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
+        mediaVM.pullMediaFileListFromCamera(-1, 1)
 
+        // 选择文件
+        adapter?.selectionMode = !adapter?.selectionMode!!
+        clearSelectFiles()  // SPF：注释和上边else
 
+        // 你可以在 mediaFileListData 更新后再处理选择逻辑，以确保数据已经更新
+        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
+            adapter?.notifyDataSetChanged()
+            tv_list_count.text = "Count:${it.data.size}"
+
+            // 默认选中第一个项
+            if (adapter?.selectionMode == true && adapter?.data?.isNotEmpty() == true) {
+                val firstItem = adapter?.data?.get(0)
+                if (!adapter?.mSelectedItems?.contains(firstItem)!!) {
+                    adapter?.mSelectedItems?.add(firstItem!!)
+                }
+            }
+
+            // 下载文件
+            val mediafiles = ArrayList<MediaFile>()
+            if (adapter?.getSelectedItems()?.size != 0)
+                mediafiles.addAll(adapter?.getSelectedItems()!!)
+            bitmap = mediaVM.downloadMediaFileByteArray(mediafiles)
+        }
+        return bitmap
     }
 }

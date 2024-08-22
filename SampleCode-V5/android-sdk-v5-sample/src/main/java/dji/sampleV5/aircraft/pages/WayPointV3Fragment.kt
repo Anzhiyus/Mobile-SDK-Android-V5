@@ -1,92 +1,80 @@
 package dji.sampleV5.aircraft.pages
 
+
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
+import android.content.DialogInterface
+import android.content.DialogInterface.OnMultiChoiceClickListener
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.storage.StorageManager
+import android.os.storage.StorageVolume
 import android.provider.DocumentsContract
 import android.text.TextUtils
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.*
 import androidx.annotation.IntDef
 import androidx.fragment.app.activityViewModels
-import dji.sampleV5.aircraft.R
-import dji.sampleV5.aircraft.models.WayPointV3VM
-import dji.v5.common.callback.CommonCallbacks
-import dji.v5.common.error.IDJIError
-import dji.v5.utils.common.*
-import kotlinx.android.synthetic.main.frag_waypointv3_page.*
-import java.io.File
-import java.util.*
-
-
-import dji.v5.manager.aircraft.waypoint3.model.WaypointMissionExecuteState
-import java.io.IOException
-import android.content.DialogInterface
-
-import android.content.DialogInterface.OnMultiChoiceClickListener
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.os.Build
-import android.os.storage.StorageManager
-import android.os.storage.StorageVolume
-import android.widget.*
 import com.dji.industry.mission.DocumentsUtils
+import com.dji.wpmzsdk.common.data.HeightMode
 import com.dji.wpmzsdk.common.data.Template
 import com.dji.wpmzsdk.common.utils.kml.model.WaypointActionType
 import com.dji.wpmzsdk.manager.WPMZManager
+import dji.sampleV5.aircraft.R
+import dji.sampleV5.aircraft.models.WayPointV3VM
+import dji.sampleV5.aircraft.util.DialogUtil
+import dji.sampleV5.aircraft.util.ToastUtils
 import dji.sampleV5.aircraft.utils.KMZTestUtil
 import dji.sampleV5.aircraft.utils.KMZTestUtil.createWaylineMission
 import dji.sampleV5.aircraft.utils.wpml.WaypointInfoModel
-
-
-import dji.sampleV5.aircraft.util.DialogUtil
+import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.wpmz.jni.JNIWPMZManager
 import dji.sdk.wpmz.value.mission.*
+import dji.v5.common.callback.CommonCallbacks
+import dji.v5.common.error.IDJIError
+import dji.v5.common.utils.GpsUtils
+import dji.v5.manager.KeyManager
+import dji.v5.manager.aircraft.simulator.SimulatorManager
 import dji.v5.manager.aircraft.waypoint3.WPMZParserManager
 import dji.v5.manager.aircraft.waypoint3.WaylineExecutingInfoListener
 import dji.v5.manager.aircraft.waypoint3.WaypointActionListener
+import dji.v5.manager.aircraft.waypoint3.WaypointMissionManager
+import dji.v5.manager.aircraft.waypoint3.model.BreakPointInfo
+import dji.v5.manager.aircraft.waypoint3.model.RecoverActionType
 import dji.v5.manager.aircraft.waypoint3.model.WaylineExecutingInfo
+import dji.v5.manager.aircraft.waypoint3.model.WaypointMissionExecuteState
+import dji.v5.utils.common.*
 import dji.v5.utils.common.DeviceInfoUtil.getPackageName
+import dji.v5.ux.accessory.DescSpinnerCell
 import dji.v5.ux.map.MapWidget
-
 import dji.v5.ux.mapkit.core.maps.DJIMap
-
 import dji.v5.ux.mapkit.core.models.DJIBitmapDescriptor
 import dji.v5.ux.mapkit.core.models.DJIBitmapDescriptorFactory
-
 import dji.v5.ux.mapkit.core.models.DJILatLng
-
+import dji.v5.ux.mapkit.core.models.annotations.DJIMarker
 import dji.v5.ux.mapkit.core.models.annotations.DJIMarkerOptions
-
 import dji.v5.ux.mapkit.core.models.annotations.DJIPolylineOptions
-
-
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.Disposable
 import io.reactivex.rxjava3.schedulers.Schedulers
-import kotlinx.android.synthetic.main.view_mission_setting_home.*
-
-import android.widget.EditText
-import com.dji.wpmzsdk.common.data.HeightMode
-import dji.sdk.keyvalue.key.FlightControllerKey
-import dji.sdk.keyvalue.key.KeyTools
-import dji.sdk.keyvalue.value.common.LocationCoordinate2D
-import dji.v5.common.utils.GpsUtils
-import dji.v5.manager.KeyManager
-import dji.v5.manager.aircraft.simulator.SimulatorManager
-import dji.v5.manager.aircraft.waypoint3.WaypointMissionManager
-import dji.v5.manager.aircraft.waypoint3.model.BreakPointInfo
-import dji.v5.ux.accessory.DescSpinnerCell
-import dji.v5.ux.mapkit.core.models.annotations.DJIMarker
 import kotlinx.android.synthetic.main.dialog_add_waypoint.view.*
-import dji.sampleV5.aircraft.util.ToastUtils
-import dji.v5.manager.aircraft.waypoint3.model.RecoverActionType
+import kotlinx.android.synthetic.main.frag_waypointv3_page.*
+import kotlinx.android.synthetic.main.view_mission_setting_home.*
+import java.io.File
+import java.io.IOException
+import java.util.*
 
 
 /**
@@ -118,6 +106,8 @@ class WayPointV3Fragment : DJIFragment() {
     var curMissionExecuteState: WaypointMissionExecuteState? = null
     var selectWaylines: ArrayList<Int> = ArrayList()
 
+    var myFragment = MediaFragment()
+
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -129,6 +119,11 @@ class WayPointV3Fragment : DJIFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        childFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, myFragment)
+            .commit()
+
         prepareMissionData()
         initView(savedInstanceState)
         initData()
@@ -306,6 +301,15 @@ class WayPointV3Fragment : DJIFragment() {
 
         createMapView(savedInstanceState)
         observeAircraftLocation()
+
+        btn_take_photo_spf.setOnClickListener {
+            myFragment.take_photo()
+        }
+
+        btn_download_photo_spf.setOnClickListener {
+            val bitmapData: Bitmap? = myFragment.download_photo()
+            Log.d("BitmapSize", "Bitmap 大小: $bitmapData.byteCount 字节")
+        }
     }
 
     private fun saveKmz(showToast: Boolean) {

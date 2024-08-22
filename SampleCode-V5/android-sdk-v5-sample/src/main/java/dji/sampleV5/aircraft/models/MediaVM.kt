@@ -1,5 +1,7 @@
 package dji.sampleV5.aircraft.models
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.lifecycle.MutableLiveData
 import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.data.DJIToastResult
@@ -202,6 +204,22 @@ class MediaVM : DJIViewModel() {
         }
     }
 
+    fun  downloadMediaFileBitmap(mediaList : ArrayList<MediaFile>) : Bitmap? {
+        var bitmap: Bitmap? = null
+        mediaList.forEach {
+            bitmap = downloadFileBitmap(it)
+        }
+        return bitmap
+    }
+
+    fun  downloadMediaFileByteArray(mediaList : ArrayList<MediaFile>) : ByteArray? {
+        var bitmap: ByteArray? = null
+        mediaList.forEach {
+            bitmap = downloadFileByteArray(it)
+        }
+        return bitmap
+    }
+
     private fun downloadFile(mediaFile :MediaFile ) {
         val dirs = File(DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile"))
         if (!dirs.exists()) {
@@ -249,5 +267,75 @@ class MediaVM : DJIViewModel() {
             }
 
         })
+    }
+
+    private fun downloadFileBitmap(mediaFile :MediaFile ) : Bitmap? {
+        var bitmap: Bitmap? = null
+        var offset = 0L
+        mediaFile?.pullOriginalMediaFileFromCamera(offset, object : MediaFileDownloadListener {
+            override fun onStart() {
+                LogUtils.i("MediaFile" , "${mediaFile.fileIndex } start download"  )
+            }
+
+            override fun onProgress(total: Long, current: Long) {
+                val fullSize = offset + total;
+                val downloadedSize = offset + current
+                val data: Double = StringUtils.formatDouble((downloadedSize.toDouble() / fullSize.toDouble()))
+                val result: String = StringUtils.formatDouble(data * 100, "#0").toString() + "%"
+                LogUtils.i("MediaFile"  , "${mediaFile.fileIndex}  progress $result")
+            }
+
+            override fun onRealtimeDataUpdate(data: ByteArray, position: Long) {
+                // 将ByteArray转换为Bitmap
+                if (bitmap == null) {
+                    bitmap = BitmapFactory.decodeByteArray(data, 0, data.size)
+                }
+            }
+
+            override fun onFinish() {
+                LogUtils.i("MediaFile" , "${mediaFile.fileIndex }  download finish"  )
+            }
+
+            override fun onFailure(error: IDJIError?) {
+                LogUtils.e("MediaFile", "download error$error")
+            }
+
+        })
+        return bitmap
+    }
+
+    private fun downloadFileByteArray(mediaFile :MediaFile ) : ByteArray? {
+        var bitmap: ByteArray? = null
+        var offset = 0L
+        mediaFile?.pullOriginalMediaFileFromCamera(offset, object : MediaFileDownloadListener {
+            override fun onStart() {
+                LogUtils.i("MediaFile" , "${mediaFile.fileIndex } start download"  )
+            }
+
+            override fun onProgress(total: Long, current: Long) {
+                val fullSize = offset + total;
+                val downloadedSize = offset + current
+                val data: Double = StringUtils.formatDouble((downloadedSize.toDouble() / fullSize.toDouble()))
+                val result: String = StringUtils.formatDouble(data * 100, "#0").toString() + "%"
+                LogUtils.i("MediaFile"  , "${mediaFile.fileIndex}  progress $result")
+            }
+
+            override fun onRealtimeDataUpdate(data: ByteArray, position: Long) {
+                // 将ByteArray转换为Bitmap
+                if (bitmap == null) {
+                    bitmap = data
+                }
+            }
+
+            override fun onFinish() {
+                LogUtils.i("MediaFile" , "${mediaFile.fileIndex }  download finish"  )
+            }
+
+            override fun onFailure(error: IDJIError?) {
+                LogUtils.e("MediaFile", "download error$error")
+            }
+
+        })
+        return bitmap
     }
 }

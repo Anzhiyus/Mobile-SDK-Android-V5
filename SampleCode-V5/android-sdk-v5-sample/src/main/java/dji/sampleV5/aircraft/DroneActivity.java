@@ -1,7 +1,10 @@
 package dji.sampleV5.aircraft;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -35,6 +38,7 @@ import org.opencv.features2d.ORB;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -49,7 +53,11 @@ import dji.sampleV5.aircraft.pages.MediaFragment;
 public class DroneActivity extends AppCompatActivity {
 
     private static final String TAG = "OpencvpictureActivity";
+
+    private static final String SHARED_PREFS_NAME = "WorkerData";
+
     MediaFragment myFragment = new MediaFragment();
+    int i=0;
 
 
 
@@ -84,10 +92,10 @@ public class DroneActivity extends AppCompatActivity {
                     .hide(myFragment) // 隐藏 myFragment
                     .commit();  // 提交事务
         }
-
-        initTakePhoto();
-//        initDownloadPhoto();
 //        takePhoto();
+
+//        initTakePhoto();
+
 
 
 
@@ -95,6 +103,7 @@ public class DroneActivity extends AppCompatActivity {
 
     private void initTakePhoto(){
         findViewById(R.id.btn_take_photo).setOnClickListener(v -> myFragment.take_photo());
+        int a=0   ;
     }
 
     public void initDownloadPhoto(View view) {
@@ -102,42 +111,146 @@ public class DroneActivity extends AppCompatActivity {
 //        Bitmap bitmapData = myFragment.download_photo();
 //
 //            byte[] bitmapBytes = myFragment.downloadPhotoByteArray();
+
+//        clearSharedPreferences();
+
+
+//        for (int i = 0; i < picturearray.length; i++) {
+//
+            String path1=picturearray[i];
+            Log.d(TAG, "picturearray: "+path1);
+
+            // 创建 WorkRequest
+            WorkRequest photoProcessingWorkRequest = new OneTimeWorkRequest.Builder(PhotoProcessingWorker.class)
+                    .setInputData(new Data.Builder()
+                            .putString("photo_path", path1)
+                            .putDouble("photo_baseLine", BaseLine[i])
+                            .build())
+                    .build();
+
+            // 获取 WorkManager 实例
+            WorkManager workManager = WorkManager.getInstance(this);
+
+            // 启动工作
+            workManager.enqueue(photoProcessingWorkRequest);
+
+            // 监听结果
+            workManager.getWorkInfoByIdLiveData(photoProcessingWorkRequest.getId()).observe(this, workInfo -> {
+                if (workInfo != null && workInfo.getState().isFinished()) {
+                    if (workInfo.getState() == WorkInfo.State.SUCCEEDED) {
+                        Data outputData = workInfo.getOutputData();
+                        double resultValue = outputData.getDouble("result_value", 0.0);
+                        // 使用 resultValue
+                        Log.d(TAG, "resultValue: "+resultValue);
+                    } else if (workInfo.getState() == WorkInfo.State.FAILED) {
+                        // 处理失败情况
+                    }
+                }
+            });
+
+            i++;
+//
+//
+//        }
+
+//        WorkManager workManager = WorkManager.getInstance(this);
+//
+//// 创建初始任务
+//        OneTimeWorkRequest.Builder firstWorkRequestBuilder = new OneTimeWorkRequest.Builder(PhotoProcessingWorker.class);
+//        firstWorkRequestBuilder.setInputData(new Data.Builder()
+//                .putString("photo_path", picturearray[0])
+//                .putDouble("photo_baseLine", BaseLine[0])
+//                .build());
+//        OneTimeWorkRequest firstWorkRequest = firstWorkRequestBuilder.build();
+//
+//// 创建其他任务
+//        List<OneTimeWorkRequest> workRequests = new ArrayList<>();
+//        for (int i = 1; i < 5; i++) {
+//            Log.d(TAG, "picturearray_i: "+i);
+//            OneTimeWorkRequest workRequest = new OneTimeWorkRequest.Builder(PhotoProcessingWorker.class)
+//                    .setInputData(new Data.Builder()
+//                            .putString("photo_path", picturearray[i])
+//                            .putDouble("photo_baseLine", BaseLine[i])
+//                            .build())
+//                    .build();
+//            workRequests.add(workRequest);
+//        }
+//
+//// 链接任务
+//        workManager.beginWith(firstWorkRequest)
+//                .then(workRequests)
+//                .enqueue();
+//
+//        byte[] bitmapBytes = myFragment.downloadPhotoByteArray();
+//
 //
 //            // 创建 WorkRequest
 //            WorkRequest photoProcessingWorkRequest = new OneTimeWorkRequest.Builder(PhotoProcessingWorker.class)
 //                    .setInputData(new Data.Builder()
 //                            .putByteArray("photo_bytes", bitmapBytes)
+//                            .putByteArray("photo_bytes", bitmapBytes)
 //                            .build())
 //                    .build();
 
-        String bitmapBytes = "myFragment.downloadPhotoByteArray()";
+//        String bitmapBytes = "myFragment.downloadPhotoByteArray()";
+//
+//        // 创建 WorkRequest
+//        WorkRequest photoProcessingWorkRequest = new OneTimeWorkRequest.Builder(PhotoProcessingWorker.class)
+//                .setInputData(new Data.Builder()
+//                        .putString("photo_bytes", bitmapBytes)
+//                        .build())
+//                .build();
 
-        // 创建 WorkRequest
-        WorkRequest photoProcessingWorkRequest = new OneTimeWorkRequest.Builder(PhotoProcessingWorker.class)
-                .setInputData(new Data.Builder()
-                        .putString("photo_bytes", bitmapBytes)
-                        .build())
-                .build();
-
-        // 获取 WorkManager 实例
-        WorkManager workManager = WorkManager.getInstance(this);
-
-        // 启动工作
-        workManager.enqueue(photoProcessingWorkRequest);
-
-        // 监听结果
-        workManager.getWorkInfoByIdLiveData(photoProcessingWorkRequest.getId()).observe(this, workInfo -> {
-            if (workInfo != null && workInfo.getState().isFinished()) {
-                if (workInfo.getState() == WorkInfo.State.SUCCEEDED) {
-                    Data outputData = workInfo.getOutputData();
-                    double resultValue = outputData.getDouble("result_value", 0.0);
-                    // 使用 resultValue
+//        // 获取 WorkManager 实例
+//        WorkManager workManager = WorkManager.getInstance(this);
+//
+//        // 启动工作
+//        workManager.enqueue(photoProcessingWorkRequest);
+//
+//        // 监听结果
+//        workManager.getWorkInfoByIdLiveData(photoProcessingWorkRequest.getId()).observe(this, workInfo -> {
+//            if (workInfo != null && workInfo.getState().isFinished()) {
+//                if (workInfo.getState() == WorkInfo.State.SUCCEEDED) {
+//                    Data outputData = workInfo.getOutputData();
+//                    double resultValue = outputData.getDouble("result_value", 0.0);
+//                    // 使用 resultValue
 //                        Log.d(TAG, "resultValue: "+resultValue);
-                } else if (workInfo.getState() == WorkInfo.State.FAILED) {
-                    // 处理失败情况
+//                } else if (workInfo.getState() == WorkInfo.State.FAILED) {
+//                    // 处理失败情况
+//                }
+//            }
+//        });
+    }
+
+    private void clearSharedPreferences() {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.clear(); // 清除所有数据
+        editor.apply(); // 或者使用 editor.commit();
+    }
+
+    public static byte[] readImageToByteArray(String path) {
+        FileInputStream fis = null;
+        byte[] imageBytes = null;
+
+        try {
+            File file = new File(path);
+            imageBytes = new byte[(int) file.length()];
+            fis = new FileInputStream(file);
+            fis.read(imageBytes);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             }
-        });
+        }
+
+        return imageBytes;
     }
 
 //    private void initDownloadPhoto(){
@@ -225,87 +338,92 @@ public class DroneActivity extends AppCompatActivity {
 //        }
 //    };
 //
-//    // 执行操作C
-//    String [] picturearray;
-//    double [] BaseLine;
+    // 执行操作C
+    String [] picturearray;
+    double [] BaseLine;
 
 
-//    public void takePhoto(){
-//        picturearray=getMatchingFileNames(getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()+"/H1","^H1.*\\.(jpg|JPG)");
-//        // 读取文件，计算基线距离
-//        BaseLine=latlonToBaseLine("H1架次CGCS2000、85高");
-//        Log.d(TAG, "H1架次CGCS2000: " + BaseLine);
-//
-//    }
-//
-//    /** 列出当前文件夹内某一文件类型的文件名
-//     * @param folderPath
-//     * @param pattern
-//     * @return
-//     */
-//    public static String[] getMatchingFileNames(String folderPath, String pattern) {
-//        Pattern p = Pattern.compile(pattern); // ".+\\.txt"
-//        List<String> matchingFileNames = new ArrayList<>();
-//        File directory = new File(folderPath);
-//        if (directory.exists() && directory.isDirectory()) {
-//            File[] files = directory.listFiles();
-//            if (files != null) {
-//                for (File file : files) {
-//                    Matcher m = p.matcher(file.getName());
-//                    if (file.isFile() && m.matches()) {
-//                        matchingFileNames.add(folderPath+"/"+file.getName());
-//                    }
-//                }
-//            }
-//        }
-//        Collections.sort(matchingFileNames);
-//        return matchingFileNames.toArray(new String[0]);
-////        return Arrays.copyOfRange(matchingFileNames.toArray(new String[0]), 1201, 1260);
-//    }
-//
-//    private double [] latlonToBaseLine(String filename){
-//        // 读取照片经纬度，用于计算变高的基线
-//        ArrayList<Point> pointStack = new ArrayList<>();
-////        String path_QK3POS=getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()+"/QK3POS.txt";
-//        String filepath=getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()+"/"+filename+".txt";
-//        try {
-//            File file = new File(filepath);
-//            if (file.exists()) {
-//                BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
-//                String line;
-//                // 跳过第一行
-//                bufferedReader.readLine();
-//                while ((line = bufferedReader.readLine()) != null) {
-//                    // 使用空格分隔每一列
-//                    String[] columns = line.split("\t");
-//                    // 判断是否有足够的列
-//                    if (columns.length >= 3) {
-//                        // 读取第二列和第三列作为 double 类型数据
-//                        double column2 = Double.parseDouble(columns[1]);
-//                        double column3 = Double.parseDouble(columns[2]);
-//                        // 在这里可以使用 column2 和 column3 做进一步的处理
-//                        pointStack.add(new Point(column2,column3));
-//                    }
-//                }
-//                bufferedReader.close();
-//            } else {
-//                Log.e("File Error", "File does not exist");
-//            }
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
-//        double [] BaseLine=new double[pointStack.size()-1];
-//        for(int i=0; i<pointStack.size()-1; i++){
-//            BaseLine[i] = Math.sqrt((pointStack.get(i+1).x-pointStack.get(i).x)
-//                    * (pointStack.get(i+1).x-pointStack.get(i).x)
-//                    + (pointStack.get(i+1).y-pointStack.get(i).y)
-//                    * (pointStack.get(i+1).y-pointStack.get(i).y));
-//        }
-//        return BaseLine;
-//    }
+    public void takePhoto(){
+        picturearray=getMatchingFileNames(getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()+"/H1","^H1.*\\.(jpg|JPG)");
+        Log.d(TAG, "takePhoto: "+picturearray.length);
+        // 读取文件，计算基线距离
+        BaseLine=latlonToBaseLine("H1架次CGCS2000、85高");
+        Log.d(TAG, "H1架次CGCS2000: " + BaseLine);
 
-//
-//
+    }
+
+    /** 列出当前文件夹内某一文件类型的文件名
+     * @param folderPath
+     * @param pattern
+     * @return
+     */
+    public static String[] getMatchingFileNames(String folderPath, String pattern) {
+        Pattern p = Pattern.compile(pattern); // ".+\\.txt"
+        List<String> matchingFileNames = new ArrayList<>();
+        File directory = new File(folderPath);
+        if (directory.exists() && directory.isDirectory()) {
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    Matcher m = p.matcher(file.getName());
+                    if (file.isFile() && m.matches()) {
+                        matchingFileNames.add(folderPath+"/"+file.getName());
+                    }
+                }
+            }
+        }
+        Collections.sort(matchingFileNames);
+        return matchingFileNames.toArray(new String[0]);
+//        return Arrays.copyOfRange(matchingFileNames.toArray(new String[0]), 1201, 1260);
+    }
+
+    private double [] latlonToBaseLine(String filename){
+        // 读取照片经纬度，用于计算变高的基线
+        ArrayList<Point> pointStack = new ArrayList<>();
+//        String path_QK3POS=getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()+"/QK3POS.txt";
+        String filepath=getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()+"/"+filename+".txt";
+        try {
+            File file = new File(filepath);
+            if (file.exists()) {
+                BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
+                String line;
+                // 跳过第一行
+                bufferedReader.readLine();
+                while ((line = bufferedReader.readLine()) != null) {
+                    // 使用空格分隔每一列
+                    String[] columns = line.split("\t");
+                    // 判断是否有足够的列
+                    if (columns.length >= 3) {
+                        // 读取第二列和第三列作为 double 类型数据
+                        double column2 = Double.parseDouble(columns[1]);
+                        double column3 = Double.parseDouble(columns[2]);
+                        // 在这里可以使用 column2 和 column3 做进一步的处理
+                        pointStack.add(new Point(column2,column3));
+                    }
+                }
+                bufferedReader.close();
+            } else {
+                Log.e("File Error", "File does not exist");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        int size = pointStack.size();
+        if (size <= 1) {
+            throw new IllegalArgumentException("pointStack must contain more than 1 point to form a baseline.");
+        }
+        double[] BaseLine = new double[size - 1];
+        for(int i=0; i<pointStack.size()-1; i++){
+            BaseLine[i] = Math.sqrt((pointStack.get(i+1).x-pointStack.get(i).x)
+                    * (pointStack.get(i+1).x-pointStack.get(i).x)
+                    + (pointStack.get(i+1).y-pointStack.get(i).y)
+                    * (pointStack.get(i+1).y-pointStack.get(i).y));
+        }
+        return BaseLine;
+    }
+
+
+
 //    /** 对相邻图像进行特征提取和计算航高
 //     *
 //     * @param img1Bitmap ：第一幅图像

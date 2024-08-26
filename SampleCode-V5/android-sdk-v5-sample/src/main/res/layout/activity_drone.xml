@@ -27,6 +27,15 @@
             android:onClick="initDownloadPhoto"
             android:textColor="@color/black"/>
 
+
+
+
+
+
+
+
+
+
         <FrameLayout
             android:id="@+id/fragment_container"
             android:layout_width="match_parent"

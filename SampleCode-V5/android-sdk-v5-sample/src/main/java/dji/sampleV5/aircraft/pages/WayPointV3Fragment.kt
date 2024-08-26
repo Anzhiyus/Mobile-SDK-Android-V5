@@ -17,19 +17,24 @@ import android.os.storage.StorageManager
 import android.os.storage.StorageVolume
 import android.provider.DocumentsContract
 import android.text.TextUtils
-import android.util.Log
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.annotation.IntDef
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.fragment.app.activityViewModels
+import androidx.transition.AutoTransition
+import androidx.transition.TransitionManager
 import com.dji.industry.mission.DocumentsUtils
 import com.dji.wpmzsdk.common.data.HeightMode
 import com.dji.wpmzsdk.common.data.Template
 import com.dji.wpmzsdk.common.utils.kml.model.WaypointActionType
 import com.dji.wpmzsdk.manager.WPMZManager
 import dji.sampleV5.aircraft.R
+import dji.sampleV5.aircraft.models.MediaVM
 import dji.sampleV5.aircraft.models.WayPointV3VM
 import dji.sampleV5.aircraft.util.DialogUtil
 import dji.sampleV5.aircraft.util.ToastUtils
@@ -54,6 +59,7 @@ import dji.v5.manager.aircraft.waypoint3.model.BreakPointInfo
 import dji.v5.manager.aircraft.waypoint3.model.RecoverActionType
 import dji.v5.manager.aircraft.waypoint3.model.WaylineExecutingInfo
 import dji.v5.manager.aircraft.waypoint3.model.WaypointMissionExecuteState
+import dji.v5.manager.datacenter.media.MediaFile
 import dji.v5.utils.common.*
 import dji.v5.utils.common.DeviceInfoUtil.getPackageName
 import dji.v5.ux.accessory.DescSpinnerCell
@@ -106,7 +112,11 @@ class WayPointV3Fragment : DJIFragment() {
     var curMissionExecuteState: WaypointMissionExecuteState? = null
     var selectWaylines: ArrayList<Int> = ArrayList()
 
-    var myFragment = MediaFragment()
+    private val mediaVM: MediaVM by activityViewModels()
+    private var isFullScreen = false
+
+
+
 
 
     override fun onCreateView(
@@ -120,15 +130,64 @@ class WayPointV3Fragment : DJIFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        childFragmentManager.beginTransaction()
-            .replace(R.id.fragment_container, myFragment)
-            .commit()
+        // 设置点击事件来切换视图
+        widget_primary_fpv.setOnClickListener { switchToFullScreen(widget_primary_fpv, map_widget) }
 
+//        initView()
         prepareMissionData()
         initView(savedInstanceState)
         initData()
         WPMZManager.getInstance().init(ContextUtil.getContext())
+
+        mediaVM.init()
     }
+
+    private fun switchToFullScreen(fullScreenView: View, thumbnailView: View) {
+        val constraintLayout = fpv_holder
+        val constraintSet = ConstraintSet()
+        constraintSet.clone(constraintLayout)
+
+        if (isFullScreen) {
+            // 当前是全屏模式，切换为缩略模式
+            constraintSet.constrainWidth(fullScreenView.id, 400)
+            constraintSet.constrainHeight(fullScreenView.id, 400)
+            constraintSet.connect(fullScreenView.id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
+            constraintSet.connect(fullScreenView.id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
+            constraintSet.connect(fullScreenView.id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
+
+
+            constraintSet.constrainWidth(thumbnailView.id,ConstraintSet.MATCH_CONSTRAINT)
+            constraintSet.constrainHeight(thumbnailView.id, 900)
+            constraintSet.connect(thumbnailView.id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
+//            constraintSet.connect(thumbnailView.id, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
+            constraintSet.connect(thumbnailView.id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
+            constraintSet.connect(thumbnailView.id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
+
+            fullScreenView.bringToFront()
+        } else {
+            // 当前是缩略模式，切换为全屏模式
+            constraintSet.constrainWidth(fullScreenView.id,2200)
+            constraintSet.constrainHeight(fullScreenView.id, 900)
+            constraintSet.connect(fullScreenView.id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
+//            constraintSet.connect(fullScreenView.id, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
+            constraintSet.connect(fullScreenView.id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
+//            constraintSet.connect(fullScreenView.id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
+
+            constraintSet.constrainWidth(thumbnailView.id, 400)
+            constraintSet.constrainHeight(thumbnailView.id, 400)
+            constraintSet.connect(thumbnailView.id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
+            constraintSet.connect(thumbnailView.id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
+            constraintSet.connect(thumbnailView.id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
+
+            // 将 thumbnailView 提到前台
+            thumbnailView.bringToFront()
+        }
+
+        constraintSet.applyTo(constraintLayout)
+
+        isFullScreen = !isFullScreen
+    }
+
 
     private fun prepareMissionData() {
 
@@ -303,13 +362,38 @@ class WayPointV3Fragment : DJIFragment() {
         observeAircraftLocation()
 
         btn_take_photo_spf.setOnClickListener {
-            myFragment.take_photo()
+            mediaVM.takePhoto(object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() {
+                    ToastUtils.showToast("take photo success")
+                }
+
+                override fun onFailure(error: IDJIError) {
+                    ToastUtils.showToast("take photo failed")
+                }
+            })
         }
 
         btn_download_photo_spf.setOnClickListener {
-            val bitmapData: Bitmap? = myFragment.download_photo()
-            Log.d("BitmapSize", "Bitmap 大小: $bitmapData.byteCount 字节")
+            var bitmap: ByteArray? = downloadPhotoByteArray()
         }
+
+
+    }
+
+    fun downloadPhotoByteArray() : ByteArray? {
+        var bitmap: ByteArray? = null
+        // 获取文件列表
+        // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
+        mediaVM.pullMediaFileListFromCamera(-1, 1)
+
+        // 你可以在 mediaFileListData 更新后再处理选择逻辑，以确保数据已经更新
+        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
+            // 下载文件
+            val mediafiles: ArrayList<MediaFile> = ArrayList(mediaVM.mediaFileListData.value?.data!!)
+//            bitmap = mediaVM.downloadMediaFileByteArray(mediafiles)
+            mediaVM.downloadMediaFile(mediafiles)
+        }
+        return bitmap
     }
 
     private fun saveKmz(showToast: Boolean) {
@@ -738,6 +822,7 @@ class WayPointV3Fragment : DJIFragment() {
                 it.dispose()
             }
         }
+
     }
 
     fun getErroMsg(error: IDJIError): String {

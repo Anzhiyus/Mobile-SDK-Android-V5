@@ -1,6 +1,7 @@
 package dji.sampleV5.aircraft;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Environment;
@@ -10,6 +11,9 @@ import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 import androidx.work.Data;
 import androidx.annotation.NonNull;
+
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
 import org.opencv.android.Utils;
 import org.opencv.core.DMatch;
@@ -23,8 +27,10 @@ import org.opencv.features2d.ORB;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -43,8 +49,6 @@ public class PhotoProcessingWorker extends Worker {
     // 的图片数组，实际过程中应该是实时读取，可能不需要此过程。
     private static final Object lock = new Object();
 
-    private double midChange = 0;
-    Bitmap midBitmap = null;
     double smoothmean = 0;
 
     // 平滑权重，weights为最近赋予2权重表示弱化当前数据，赋予1表示强化之前的数据，目的是使当前数据和之前趋势一样
@@ -52,14 +56,11 @@ public class PhotoProcessingWorker extends Worker {
     double[] weights = {2, 1,  2, 3 , 4 , 5, 6, 7, 8, 9};
     double[] weights2 = {1,  2, 3 , 4 , 5, 6, 7, 8, 9,10};
 
-    List<Double> idwData_Smooth1 = new ArrayList<>();
-    List<Double> idwData_Smooth2 = new ArrayList<>();
 
-    String [] picturearray;
-    double [] BaseLine;
-    double FocalLength;
-    double PixelDim;
-    Bitmap bitmap;
+    private static final String SHARED_PREFS_NAME = "WorkerData";
+    private static final Gson gson = new Gson();
+
+
 
     public PhotoProcessingWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
@@ -68,47 +69,92 @@ public class PhotoProcessingWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        String bitmapBytes = getInputData().getString("photo_bytes");
+        // 获取共享数据
+        SharedPreferences sharedPreferences = getApplicationContext().getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE);
+        String tempDataPath2 = sharedPreferences.getString("tempDataPath2", "kong");
+        double tempDataIdw = sharedPreferences.getFloat("tempDataIdw", 0.0f);
+        List<Double> idwData_Smooth1 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth1", "[]"));
+        List<Double> idwData_Smooth2 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth2", "[]"));
+        String bitmapPath1 = getInputData().getString("photo_path");
 
-//        byte[] bitmapBytes = getInputData().getByteArray("photo_bytes");
-//        if (bitmapBytes != null) {
-//            bitmap = BitmapFactory.decodeByteArray(bitmapBytes, 0, bitmapBytes.length);
-//            if (bitmap == null) {
-//                Log.e("PhotoProcessingWorker", "Failed to decode bitmap");
-//                return Result.failure();
-//            }
-//        }
+        // 获取传输数据
+        double baseLine = getInputData().getDouble("photo_baseLine", 100);
+        String path1 = getInputData().getString("photo_path");
 
-//        picturearray=getMatchingFileNames(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()+"/H1","^H1.*\\.(jpg|JPG)");
-        // 读取文件，计算基线距离
-        double[] baseLine=latlonToBaseLine("H1架次CGCS2000、85高");
-//
+        Log.d(TAG, "photo_path: "+path1);
+
+        // 检查列表是否为空
+        if (tempDataPath2 == "kong") {
+            tempDataPath2 = path1;
+            // 更新并保存共享数据
+            SharedPreferences.Editor editor = sharedPreferences.edit();
+            editor.putString("tempDataPath2", tempDataPath2);
+            // 如果列表为空，函数直接返回
+            Log.d(TAG, "The list is empty. Function completed: "+tempDataPath2);
+            System.out.println("The list is empty. Function completed.");
+            // 返回结果
+            Data outputData = new Data.Builder()
+                    .putDouble("result_value", 0)
+                    .build();
+            return Result.success(outputData);
+        }
+
+        Bitmap img1Bitmap=null;
+        Bitmap img2Bitmap=null;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inScaled = false;  // 阻止 Android 自动缩放相片分辨率
+        try (FileInputStream fis=new FileInputStream(path1)){
+            img1Bitmap = BitmapFactory.decodeStream(fis);
+        } catch(Exception e){
+            e.printStackTrace();
+        }
+        try (FileInputStream fis=new FileInputStream(tempDataPath2)){
+            img2Bitmap = BitmapFactory.decodeStream(fis);
+        } catch(Exception e){
+            e.printStackTrace();
+        }
+
+
         double FocalLength = 0.04;
-        double BaseLine = 100;
         double PixelDim = 4.5/1000/1000; // 米/像素
-        if(midBitmap == null)
-            midBitmap = bitmap;
-        double idw = processImageORB(midBitmap, bitmap, FocalLength, baseLine[0], PixelDim);
-        midBitmap = bitmap;
+        double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
+//        double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
+        tempDataPath2 = path1;
 
         // 结果为0时改为上一个计算的数值
         if(idw == 0)
-            idw = midChange;
-        midChange = idw;
+            idw = tempDataIdw;
+        tempDataIdw = idw;
 
         // 第一次加权平滑结果
         calculateIDWSmooth(idwData_Smooth1, idw, 10,weights);
         // 第二次加权平滑结果
         smoothmean = calculateIDWSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
 
+        Log.d(TAG, "smoothmean: "+smoothmean);
 
-
+        // 更新并保存共享数据
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putString("tempDataPath2", tempDataPath2);
+        editor.putFloat("tempDataIdw", (float) tempDataIdw);
+        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
+        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
+        editor.apply();
 
         // 返回结果
         Data outputData = new Data.Builder()
-                .putDouble("result_value", 42.0)
+                .putDouble("result_value", smoothmean)
                 .build();
         return Result.success(outputData);
+    }
+
+    private List<Double> jsonToDoubleList(String json) {
+        Type listType = new TypeToken<ArrayList<Double>>() {}.getType();
+        return gson.fromJson(json, listType);
+    }
+
+    private String doubleListToJson(List<Double> list) {
+        return gson.toJson(list);
     }
 
     private double processPhoto(Bitmap bitmap) {

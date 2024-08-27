@@ -14,6 +14,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintWidth_percent="0.85">
 
+
         <dji.v5.ux.map.MapWidget
             android:id="@+id/map_widget"
             android:layout_width="match_parent"

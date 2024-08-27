@@ -17,22 +17,25 @@ import android.os.storage.StorageManager
 import android.os.storage.StorageVolume
 import android.provider.DocumentsContract
 import android.text.TextUtils
+import android.util.Log
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.annotation.IntDef
-import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.fragment.app.activityViewModels
-import androidx.transition.AutoTransition
-import androidx.transition.TransitionManager
+import androidx.work.Data
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.WorkRequest
 import com.dji.industry.mission.DocumentsUtils
 import com.dji.wpmzsdk.common.data.HeightMode
 import com.dji.wpmzsdk.common.data.Template
 import com.dji.wpmzsdk.common.utils.kml.model.WaypointActionType
 import com.dji.wpmzsdk.manager.WPMZManager
+import dji.sampleV5.aircraft.PhotoProcessingWorker
 import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.models.MediaVM
 import dji.sampleV5.aircraft.models.WayPointV3VM
@@ -78,9 +81,17 @@ import io.reactivex.rxjava3.schedulers.Schedulers
 import kotlinx.android.synthetic.main.dialog_add_waypoint.view.*
 import kotlinx.android.synthetic.main.frag_waypointv3_page.*
 import kotlinx.android.synthetic.main.view_mission_setting_home.*
+import org.opencv.android.BaseLoaderCallback
+import org.opencv.android.LoaderCallbackInterface
+import org.opencv.android.OpenCVLoader
+import org.opencv.core.Point
+import java.io.BufferedReader
 import java.io.File
+import java.io.FileReader
 import java.io.IOException
 import java.util.*
+import java.util.regex.Pattern
+import kotlin.math.pow
 
 
 /**
@@ -115,9 +126,21 @@ class WayPointV3Fragment : DJIFragment() {
     private val mediaVM: MediaVM by activityViewModels()
     private var isFullScreen = false
 
+    private val TAG = "OpencvpictureActivity"
+    private val SHARED_PREFS_NAME = "WorkerData"
 
+    var i = 0
 
-
+    // 判断OpenCV是否加载成功
+    private val loaderCallback: BaseLoaderCallback = object : BaseLoaderCallback(context) {
+        override fun onManagerConnected(status: Int) {
+            if (status == SUCCESS) {
+                // OpenCV加载成功
+            } else {
+                super.onManagerConnected(status)
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -130,16 +153,29 @@ class WayPointV3Fragment : DJIFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // 初始化OpenCV
+        if (!OpenCVLoader.initDebug()) {
+            Toast.makeText(context, "OpenCV初始化失败", Toast.LENGTH_SHORT).show()
+        } else {
+            loaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS)
+        }
+
+
+
         // 设置点击事件来切换视图
         widget_primary_fpv.setOnClickListener { switchToFullScreen(widget_primary_fpv, map_widget) }
 
-//        initView()
         prepareMissionData()
         initView(savedInstanceState)
         initData()
         WPMZManager.getInstance().init(ContextUtil.getContext())
 
         mediaVM.init()
+
+        takePhoto()
+        clearSharedPreferences()
+        i = 0
+
     }
 
     private fun switchToFullScreen(fullScreenView: View, thumbnailView: View) {
@@ -374,14 +410,189 @@ class WayPointV3Fragment : DJIFragment() {
         }
 
         btn_download_photo_spf.setOnClickListener {
-            var bitmap: ByteArray? = downloadPhotoByteArray()
+//            var bitmap: ByteArray? = downloadPhotoByteArray()
+            var bitmap: String? = downloadPhotoFixedPath()
+            initDownloadPhoto()
         }
-
 
     }
 
-    fun downloadPhotoByteArray() : ByteArray? {
-        var bitmap: ByteArray? = null
+    // 任务队列
+    private val taskQueue = LinkedList<() -> Unit>()
+
+    // 当前是否正在执行任务
+    private var isRunning = false
+
+    fun initDownloadPhoto() {
+        // 将任务添加到队列中
+        taskQueue.add {
+            val path1: String = picturearray.get(i)
+            Log.d(TAG, "picturearray: $path1")
+
+            // 创建 WorkRequest
+            val photoProcessingWorkRequest: WorkRequest = OneTimeWorkRequest.Builder(PhotoProcessingWorker::class.java)
+                .setInputData(
+                    Data.Builder()
+                        .putString("photo_path", path1)
+                        .putDouble("photo_baseLine", BaseLine[i])
+                        .build()
+                )
+                .build()
+
+            // 获取 WorkManager 实例
+            val workManager = WorkManager.getInstance(requireContext())
+
+            // 启动工作
+            workManager.enqueue(photoProcessingWorkRequest)
+
+            // 监听结果
+            workManager.getWorkInfoByIdLiveData(photoProcessingWorkRequest.id).observe(
+                viewLifecycleOwner
+            ) { workInfo: WorkInfo? ->
+                if (workInfo != null && workInfo.state.isFinished) {
+                    if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+                        val outputData = workInfo.outputData
+                        val resultValue = outputData.getDouble("result_value", 0.0)
+                        // 使用 resultValue
+                        Log.d(TAG, "resultValue: $resultValue")
+                    } else if (workInfo.state == WorkInfo.State.FAILED) {
+                        // 处理失败情况
+                    }
+                    // 任务完成后重置标志，并处理下一个任务
+                    isRunning = false
+                    processNextTask()
+                }
+            }
+
+            i++
+        }
+
+        // 如果当前没有任务在运行，处理队列中的任务
+        if (!isRunning) {
+            processNextTask()
+        }
+    }
+
+    // 处理队列中的下一个任务
+    private fun processNextTask() {
+        if (taskQueue.isNotEmpty()) {
+            isRunning = true
+            val task = taskQueue.poll()
+            task?.invoke()
+        }
+    }
+
+    fun clearSharedPreferences() {
+        val sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.clear() // 清空所有数据
+        editor.apply() // 或者使用 editor.commit()，取决于你是否需要同步
+    }
+
+
+    var picturearray: Array<String> = arrayOf()  // 初始化为空数组
+    var BaseLine: DoubleArray = doubleArrayOf()  // 初始化为空的 Double 数组
+
+    fun takePhoto() {
+        picturearray = getMatchingFileNames(
+            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/H1",
+            "^H1.*\\.(jpg|JPG)"
+        )
+        Log.d(TAG, "takePhoto: " + picturearray.size)
+        // 读取文件，计算基线距离
+        try {
+            BaseLine = latlonToBaseLine("H1架次CGCS2000、85高") ?: doubleArrayOf()
+            Log.d(TAG, "H1架次CGCS2000: ${BaseLine.size}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calculating BaseLine", e)
+        }
+    }
+
+    /** 列出当前文件夹内某一文件类型的文件名
+     * @param folderPath
+     * @param pattern
+     * @return
+     */
+    fun getMatchingFileNames(folderPath: String, pattern: String?): Array<String> {
+        val p = Pattern.compile(pattern) // ".+\\.txt"
+        val matchingFileNames: MutableList<String> = ArrayList()
+        val directory = File(folderPath)
+        if (directory.exists() && directory.isDirectory) {
+            val files = directory.listFiles()
+            if (files != null) {
+                for (file: File in files) {
+                    val m = p.matcher(file.name)
+                    if (file.isFile && m.matches()) {
+                        matchingFileNames.add(folderPath + "/" + file.name)
+                    }
+                }
+            }
+        }
+        Collections.sort(matchingFileNames)
+        return matchingFileNames.toTypedArray()
+//        return Arrays.copyOfRange(matchingFileNames.toArray(new String[0]), 1201, 1260);
+    }
+
+    private fun latlonToBaseLine(filename: String): DoubleArray {
+        // 读取照片经纬度，用于计算变高的基线
+        val pointStack = ArrayList<Point>()
+        val filepath: String = requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+            ?.toString() + "/" + filename + ".txt"
+
+        try {
+            val file = File(filepath)
+            if (file.exists()) {
+                val bufferedReader = BufferedReader(FileReader(file))
+                var line: String?
+
+                // 跳过第一行
+                bufferedReader.readLine()
+                while (bufferedReader.readLine().also { line = it } != null) {
+                    // 使用制表符分隔每一列
+                    val columns = line?.split("\t".toRegex())?.dropLastWhile { it.isEmpty() }?.toTypedArray()
+
+                    // 判断是否有足够的列
+                    if (columns != null && columns.size >= 3) {
+                        // 读取第二列和第三列作为 double 类型数据
+                        val column2 = columns[1].toDoubleOrNull()
+                        val column3 = columns[2].toDoubleOrNull()
+
+                        if (column2 != null && column3 != null) {
+                            // 在这里可以使用 column2 和 column3 做进一步的处理
+                            pointStack.add(Point(column2, column3))
+                        } else {
+                            Log.e("Parse Error", "Failed to parse column data to double")
+                        }
+                    } else {
+                        Log.e("Format Error", "Incorrect number of columns or null line")
+                    }
+                }
+                bufferedReader.close()
+            } else {
+                Log.e("File Error", "File does not exist: $filepath")
+            }
+        } catch (e: IOException) {
+            Log.e("IO Error", "Error reading file", e)
+        }
+
+        val size = pointStack.size
+        if (size <= 1) {
+            throw IllegalArgumentException("pointStack must contain more than 1 point to form a baseline.")
+        }
+
+        val BaseLine = DoubleArray(size - 1)
+        for (i in 0 until size - 1) {
+            BaseLine[i] = Math.sqrt(
+                (pointStack[i + 1].x - pointStack[i].x).pow(2)
+                        + (pointStack[i + 1].y - pointStack[i].y).pow(2)
+            )
+        }
+
+        return BaseLine
+    }
+
+    fun downloadPhotoFixedPath() : String? {
+        var bitmap: String? = null
         // 获取文件列表
         // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
         mediaVM.pullMediaFileListFromCamera(-1, 1)
@@ -390,8 +601,7 @@ class WayPointV3Fragment : DJIFragment() {
         mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
             // 下载文件
             val mediafiles: ArrayList<MediaFile> = ArrayList(mediaVM.mediaFileListData.value?.data!!)
-//            bitmap = mediaVM.downloadMediaFileByteArray(mediafiles)
-            mediaVM.downloadMediaFile(mediafiles)
+            bitmap = mediaVM.downloadMediaFileFixedPath(mediafiles)
         }
         return bitmap
     }
@@ -808,6 +1018,8 @@ class WayPointV3Fragment : DJIFragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         map_widget.onDestroy()
+
+        clearSharedPreferences() // 清空所有数据
     }
 
     override fun onDestroy() {

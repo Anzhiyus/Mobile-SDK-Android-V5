@@ -28,6 +28,7 @@ import org.opencv.features2d.ORB;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.lang.reflect.Type;
@@ -42,13 +43,6 @@ import java.util.regex.Pattern;
 public class PhotoProcessingWorker extends Worker {
     Context context = getApplicationContext(); // 获取 Context
     private static final String TAG = "OpencvpictureActivity";
-
-    private static final int JOB_ID = 1001;    // 用于启动服务的唯一标识符
-
-    // 用于锁定的对象，程序运行过程中出现读取相片不按照顺序的情况，因此设置锁，让当前图像处理完后再处理下一张。因为是读取
-    // 的图片数组，实际过程中应该是实时读取，可能不需要此过程。
-    private static final Object lock = new Object();
-
     double smoothmean = 0;
 
     // 平滑权重，weights为最近赋予2权重表示弱化当前数据，赋予1表示强化之前的数据，目的是使当前数据和之前趋势一样
@@ -56,11 +50,8 @@ public class PhotoProcessingWorker extends Worker {
     double[] weights = {2, 1,  2, 3 , 4 , 5, 6, 7, 8, 9};
     double[] weights2 = {1,  2, 3 , 4 , 5, 6, 7, 8, 9,10};
 
-
     private static final String SHARED_PREFS_NAME = "WorkerData";
     private static final Gson gson = new Gson();
-
-
 
     public PhotoProcessingWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
@@ -85,10 +76,13 @@ public class PhotoProcessingWorker extends Worker {
 
         // 检查列表是否为空
         if (tempDataPath2 == "kong") {
-            tempDataPath2 = path1;
+            Log.d(TAG, "The list is empty. Function completed: "+tempDataPath2);
+            // 数据暂存缓存路径
+            tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
             // 更新并保存共享数据
             SharedPreferences.Editor editor = sharedPreferences.edit();
             editor.putString("tempDataPath2", tempDataPath2);
+            editor.apply();
             // 如果列表为空，函数直接返回
             Log.d(TAG, "The list is empty. Function completed: "+tempDataPath2);
             System.out.println("The list is empty. Function completed.");
@@ -114,12 +108,11 @@ public class PhotoProcessingWorker extends Worker {
             e.printStackTrace();
         }
 
-
         double FocalLength = 0.04;
         double PixelDim = 4.5/1000/1000; // 米/像素
         double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
-//        double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
-        tempDataPath2 = path1;
+        // 数据暂存缓存路径
+        tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
 
         // 结果为0时改为上一个计算的数值
         if(idw == 0)
@@ -148,6 +141,39 @@ public class PhotoProcessingWorker extends Worker {
         return Result.success(outputData);
     }
 
+    /**
+     * 将给定路径的 JPEG 图像复制到应用的缓存目录中，并保存为指定的路径名称。
+     *
+     * @param context 应用上下文
+     * @param sourcePath 原图像路径
+     * @param targetFileName 缓存目录下的目标文件名称（不包括扩展名）
+     * @return 目标文件的路径，如果失败则返回 null
+     */
+    public String saveImageToCacheDir(Context context, String sourcePath, String targetFileName) {
+        File sourceFile = new File(sourcePath);
+        File cacheDir = context.getCacheDir();
+        File targetFile = new File(cacheDir, targetFileName + ".jpg");
+
+        // 确保源文件存在
+        if (!sourceFile.exists()) {
+            return null;
+        }
+
+        try (FileInputStream inputStream = new FileInputStream(sourceFile);
+             FileOutputStream outputStream = new FileOutputStream(targetFile)) {
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = inputStream.read(buffer)) > 0) {
+                outputStream.write(buffer, 0, length);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        return targetFile.getAbsolutePath();
+    }
+
     private List<Double> jsonToDoubleList(String json) {
         Type listType = new TypeToken<ArrayList<Double>>() {}.getType();
         return gson.fromJson(json, listType);
@@ -156,12 +182,6 @@ public class PhotoProcessingWorker extends Worker {
     private String doubleListToJson(List<Double> list) {
         return gson.toJson(list);
     }
-
-    private double processPhoto(Bitmap bitmap) {
-        // 执行照片处理和计算逻辑
-        return 0; // 示例返回值
-    }
-
 
     /** 对相邻图像进行特征提取和计算航高
      *
@@ -252,8 +272,6 @@ public class PhotoProcessingWorker extends Worker {
         return idw;
     }
 
-
-
     /** 反距离加权平均
      *
      * @param values 数值
@@ -318,70 +336,5 @@ public class PhotoProcessingWorker extends Worker {
         return Math.sqrt(point.x * point.x + point.y * point.y);
     }
 
-    /** 列出当前文件夹内某一文件类型的文件名
-     * @param folderPath
-     * @param pattern
-     * @return
-     */
-    public static String[] getMatchingFileNames(String folderPath, String pattern) {
-        Pattern p = Pattern.compile(pattern); // ".+\\.txt"
-        List<String> matchingFileNames = new ArrayList<>();
-        File directory = new File(folderPath);
-        if (directory.exists() && directory.isDirectory()) {
-            File[] files = directory.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    Matcher m = p.matcher(file.getName());
-                    if (file.isFile() && m.matches()) {
-                        matchingFileNames.add(folderPath+"/"+file.getName());
-                    }
-                }
-            }
-        }
-        Collections.sort(matchingFileNames);
-        return matchingFileNames.toArray(new String[0]);
-//        return Arrays.copyOfRange(matchingFileNames.toArray(new String[0]), 1201, 1260);
-    }
-
-    private double [] latlonToBaseLine(String filename){
-        // 读取照片经纬度，用于计算变高的基线
-        ArrayList<Point> pointStack = new ArrayList<>();
-//        String path_QK3POS=getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()+"/QK3POS.txt";
-        String filepath=context.getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()+"/"+filename+".txt";
-        try {
-            File file = new File(filepath);
-            if (file.exists()) {
-                BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
-                String line;
-                // 跳过第一行
-                bufferedReader.readLine();
-                while ((line = bufferedReader.readLine()) != null) {
-                    // 使用空格分隔每一列
-                    String[] columns = line.split("\t");
-                    // 判断是否有足够的列
-                    if (columns.length >= 3) {
-                        // 读取第二列和第三列作为 double 类型数据
-                        double column2 = Double.parseDouble(columns[1]);
-                        double column3 = Double.parseDouble(columns[2]);
-                        // 在这里可以使用 column2 和 column3 做进一步的处理
-                        pointStack.add(new Point(column2,column3));
-                    }
-                }
-                bufferedReader.close();
-            } else {
-                Log.e("File Error", "File does not exist");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        double [] BaseLine=new double[pointStack.size()-1];
-        for(int i=0; i<pointStack.size()-1; i++){
-            BaseLine[i] = Math.sqrt((pointStack.get(i+1).x-pointStack.get(i).x)
-                    * (pointStack.get(i+1).x-pointStack.get(i).x)
-                    + (pointStack.get(i+1).y-pointStack.get(i).y)
-                    * (pointStack.get(i+1).y-pointStack.get(i).y));
-        }
-        return BaseLine;
-    }
 
 }

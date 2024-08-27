@@ -204,18 +204,10 @@ class MediaVM : DJIViewModel() {
         }
     }
 
-    fun  downloadMediaFileBitmap(mediaList : ArrayList<MediaFile>) : Bitmap? {
-        var bitmap: Bitmap? = null
+    fun  downloadMediaFileFixedPath(mediaList : ArrayList<MediaFile>) : String? {
+        var bitmap: String? = null
         mediaList.forEach {
-            bitmap = downloadFileBitmap(it)
-        }
-        return bitmap
-    }
-
-    fun  downloadMediaFileByteArray(mediaList : ArrayList<MediaFile>) : ByteArray? {
-        var bitmap: ByteArray? = null
-        mediaList.forEach {
-            bitmap = downloadFileByteArray(it)
+            bitmap = downloadFileFixedPath(it)
         }
         return bitmap
     }
@@ -269,12 +261,12 @@ class MediaVM : DJIViewModel() {
         })
     }
 
-    private fun downloadFileAndGetPath(mediaFile :MediaFile ) : String?{
+    private fun downloadFileFixedPath(mediaFile :MediaFile ) : String?{
         val dirs = File(DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile"))
         if (!dirs.exists()) {
             dirs.mkdirs()
         }
-        val filepath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile/"  + mediaFile?.fileName)
+        val filepath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile/"  +"DroneFlyDownLoad.jpg")
         val file = File(filepath)
         var offset = 0L
         val outputStream = FileOutputStream(file, true)
@@ -319,87 +311,5 @@ class MediaVM : DJIViewModel() {
         return filepath
     }
 
-    private fun downloadFileBitmap(mediaFile :MediaFile ) : Bitmap? {
-        var bitmap: Bitmap? = null
-        val dirs = File(DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile"))
-        if (!dirs.exists()) {
-            dirs.mkdirs()
-        }
-        val filepath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile/"  + mediaFile?.fileName)
-        val file = File(filepath)
-        var offset = 0L
-        val outputStream = FileOutputStream(file, true)
-        val bos = BufferedOutputStream(outputStream)
-        mediaFile?.pullOriginalMediaFileFromCamera(offset, object : MediaFileDownloadListener {
-            override fun onStart() {
-                LogUtils.i("MediaFile" , "${mediaFile.fileIndex } start download"  )
-            }
 
-            override fun onProgress(total: Long, current: Long) {
-                val fullSize = offset + total;
-                val downloadedSize = offset + current
-                val data: Double = StringUtils.formatDouble((downloadedSize.toDouble() / fullSize.toDouble()))
-                val result: String = StringUtils.formatDouble(data * 100, "#0").toString() + "%"
-                LogUtils.i("MediaFile"  , "${mediaFile.fileIndex}  progress $result")
-            }
-
-            override fun onRealtimeDataUpdate(data: ByteArray, position: Long) {
-                try {
-                    bos.write(data)
-                    bos.flush()
-                } catch (e: IOException) {
-                    LogUtils.e("MediaFile", "write error" + e.message)
-                }
-                // 将ByteArray转换为Bitmap
-                if (bitmap == null) {
-                    bitmap = BitmapFactory.decodeByteArray(data, 0, data.size)
-                }
-            }
-
-            override fun onFinish() {
-                LogUtils.i("MediaFile" , "${mediaFile.fileIndex }  download finish"  )
-            }
-
-            override fun onFailure(error: IDJIError?) {
-                LogUtils.e("MediaFile", "download error$error")
-            }
-
-        })
-        return bitmap
-    }
-
-    private fun downloadFileByteArray(mediaFile :MediaFile ) : ByteArray? {
-        var bitmap: ByteArray? = null
-        var offset = 0L
-        mediaFile?.pullOriginalMediaFileFromCamera(offset, object : MediaFileDownloadListener {
-            override fun onStart() {
-                LogUtils.i("MediaFile" , "${mediaFile.fileIndex } start download"  )
-            }
-
-            override fun onProgress(total: Long, current: Long) {
-                val fullSize = offset + total;
-                val downloadedSize = offset + current
-                val data: Double = StringUtils.formatDouble((downloadedSize.toDouble() / fullSize.toDouble()))
-                val result: String = StringUtils.formatDouble(data * 100, "#0").toString() + "%"
-                LogUtils.i("MediaFile"  , "${mediaFile.fileIndex}  progress $result")
-            }
-
-            override fun onRealtimeDataUpdate(data: ByteArray, position: Long) {
-                // 将ByteArray转换为Bitmap
-                if (bitmap == null) {
-                    bitmap = data
-                }
-            }
-
-            override fun onFinish() {
-                LogUtils.i("MediaFile" , "${mediaFile.fileIndex }  download finish"  )
-            }
-
-            override fun onFailure(error: IDJIError?) {
-                LogUtils.e("MediaFile", "download error$error")
-            }
-
-        })
-        return bitmap
-    }
 }

@@ -172,7 +172,7 @@ class WayPointV3Fragment : DJIFragment() {
 
         mediaVM.init()
 
-//        takePhoto()
+//        takePhoto() //注销
         clearSharedPreferences()
         i = 0
 

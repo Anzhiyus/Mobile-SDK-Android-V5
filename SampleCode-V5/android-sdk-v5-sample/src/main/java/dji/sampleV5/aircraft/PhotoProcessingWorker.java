@@ -69,8 +69,11 @@ public class PhotoProcessingWorker extends Worker {
         String bitmapPath1 = getInputData().getString("photo_path");
 
         // 获取传输数据
-        double baseLine = getInputData().getDouble("photo_baseLine", 100);
+
         String path1 = getInputData().getString("photo_path");
+        double baseLine = getInputData().getDouble("photo_baseLine", 100);
+        double FocalLength = getInputData().getDouble("photo_focallength", 0.04);
+        double PixelDim = getInputData().getDouble("photo_pixeldim", 4.5/1000/1000);  // 米/像素
 
         Log.d(TAG, "photo_path: "+path1);
 
@@ -108,8 +111,8 @@ public class PhotoProcessingWorker extends Worker {
             e.printStackTrace();
         }
 
-        double FocalLength = 0.04;
-        double PixelDim = 4.5/1000/1000; // 米/像素
+//        double FocalLength = 0.04;
+//        double PixelDim = 4.5/1000/1000; // 米/像素
         double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
         // 数据暂存缓存路径
         tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");

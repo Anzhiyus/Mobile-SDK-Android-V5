@@ -172,7 +172,7 @@ class WayPointV3Fragment : DJIFragment() {
 
         mediaVM.init()
 
-        takePhoto()
+//        takePhoto()
         clearSharedPreferences()
         i = 0
 
@@ -411,8 +411,20 @@ class WayPointV3Fragment : DJIFragment() {
 
         btn_download_photo_spf.setOnClickListener {
 //            var bitmap: ByteArray? = downloadPhotoByteArray()
-            var bitmap: String? = downloadPhotoFixedPath()
-            initDownloadPhoto()
+            var path1: String? = downloadPhotoFixedPath()
+//            val path1: String = picturearray.get(i)
+            Log.d(TAG, "picturearray: $path1")
+
+            var resultValue: Double = 0.0
+
+            if (path1 != null) {
+                initDownloadPhoto(path1, 20.0, 0.04, 4.5 / 1000 / 1000) { result ->
+                    resultValue = result
+                    Log.d(TAG, "回调返回的结果: $resultValue")
+                    // 这里可以使用 resultValue 变量做进一步处理
+                }
+            }
+
         }
 
     }
@@ -423,18 +435,24 @@ class WayPointV3Fragment : DJIFragment() {
     // 当前是否正在执行任务
     private var isRunning = false
 
-    fun initDownloadPhoto() {
+    fun initDownloadPhoto(
+        path1: String,
+        BaseLine: Double,
+        FocalLength: Double,
+        PixelDim: Double,
+        callback: (Double) -> Unit
+    ) {
         // 将任务添加到队列中
         taskQueue.add {
-            val path1: String = picturearray.get(i)
-            Log.d(TAG, "picturearray: $path1")
 
             // 创建 WorkRequest
             val photoProcessingWorkRequest: WorkRequest = OneTimeWorkRequest.Builder(PhotoProcessingWorker::class.java)
                 .setInputData(
                     Data.Builder()
                         .putString("photo_path", path1)
-                        .putDouble("photo_baseLine", BaseLine[i])
+                        .putDouble("photo_baseLine", BaseLine)
+                        .putDouble("photo_focallength", FocalLength)
+                        .putDouble("photo_pixeldim", PixelDim)
                         .build()
                 )
                 .build()
@@ -455,8 +473,10 @@ class WayPointV3Fragment : DJIFragment() {
                         val resultValue = outputData.getDouble("result_value", 0.0)
                         // 使用 resultValue
                         Log.d(TAG, "resultValue: $resultValue")
+                        callback(resultValue) // 调用回调函数
                     } else if (workInfo.state == WorkInfo.State.FAILED) {
                         // 处理失败情况
+                        callback(1200.0) // 处理失败时也调用回调函数返回一个默认值
                     }
                     // 任务完成后重置标志，并处理下一个任务
                     isRunning = false
@@ -464,13 +484,16 @@ class WayPointV3Fragment : DJIFragment() {
                 }
             }
 
+
             i++
+
         }
 
         // 如果当前没有任务在运行，处理队列中的任务
         if (!isRunning) {
             processNextTask()
         }
+
     }
 
     // 处理队列中的下一个任务
@@ -493,20 +516,20 @@ class WayPointV3Fragment : DJIFragment() {
     var picturearray: Array<String> = arrayOf()  // 初始化为空数组
     var BaseLine: DoubleArray = doubleArrayOf()  // 初始化为空的 Double 数组
 
-    fun takePhoto() {
-        picturearray = getMatchingFileNames(
-            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/H1",
-            "^H1.*\\.(jpg|JPG)"
-        )
-        Log.d(TAG, "takePhoto: " + picturearray.size)
-        // 读取文件，计算基线距离
-        try {
-            BaseLine = latlonToBaseLine("H1架次CGCS2000、85高") ?: doubleArrayOf()
-            Log.d(TAG, "H1架次CGCS2000: ${BaseLine.size}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error calculating BaseLine", e)
-        }
-    }
+//    fun takePhoto() {
+//        picturearray = getMatchingFileNames(
+//            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/H1",
+//            "^H1.*\\.(jpg|JPG)"
+//        )
+//        Log.d(TAG, "takePhoto: " + picturearray.size)
+//        // 读取文件，计算基线距离
+//        try {
+//            BaseLine = latlonToBaseLine("H1架次CGCS2000、85高") ?: doubleArrayOf()
+//            Log.d(TAG, "H1架次CGCS2000: ${BaseLine.size}")
+//        } catch (e: Exception) {
+//            Log.e(TAG, "Error calculating BaseLine", e)
+//        }
+//    }
 
     /** 列出当前文件夹内某一文件类型的文件名
      * @param folderPath

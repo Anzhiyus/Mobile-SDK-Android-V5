@@ -19,6 +19,7 @@ import android.provider.DocumentsContract
 import android.text.TextUtils
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
@@ -38,6 +39,7 @@ import com.dji.wpmzsdk.manager.WPMZManager
 import dji.sampleV5.aircraft.PhotoProcessingWorker
 import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.models.MediaVM
+import dji.sampleV5.aircraft.models.VirtualStickVM
 import dji.sampleV5.aircraft.models.WayPointV3VM
 import dji.sampleV5.aircraft.util.DialogUtil
 import dji.sampleV5.aircraft.util.ToastUtils
@@ -124,7 +126,7 @@ class WayPointV3Fragment : DJIFragment() {
     var selectWaylines: ArrayList<Int> = ArrayList()
 
     private val mediaVM: MediaVM by activityViewModels()
-    private var isFullScreen = false
+    private val virtualStickVM: VirtualStickVM by activityViewModels()
 
     private val TAG = "OpencvpictureActivity"
     private val SHARED_PREFS_NAME = "WorkerData"
@@ -160,10 +162,14 @@ class WayPointV3Fragment : DJIFragment() {
             loaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS)
         }
 
-
-
-        // 设置点击事件来切换视图
-        widget_primary_fpv.setOnClickListener { switchToFullScreen(widget_primary_fpv, map_widget) }
+        thumbnail_click_overlay.setOnClickListener {
+            Log.d(TAG,"窗口点击事件")
+            switchViews(main_window, thumbnail_window_left, thumbnail_window, isLeftThumbnail = false)
+        }
+        thumbnail_click_overlay_left.setOnClickListener {
+            Log.d(TAG,"窗口点击事件")
+            switchViews(main_window, thumbnail_window_left, thumbnail_window, isLeftThumbnail = true)
+        }
 
         prepareMissionData()
         initView(savedInstanceState)
@@ -172,59 +178,39 @@ class WayPointV3Fragment : DJIFragment() {
 
         mediaVM.init()
 
-
 //        takePhoto() //注销
         clearSharedPreferences()
         i = 0
 
     }
 
-    private fun switchToFullScreen(fullScreenView: View, thumbnailView: View) {
-        val constraintLayout = fpv_holder
-        val constraintSet = ConstraintSet()
-        constraintSet.clone(constraintLayout)
+    private fun switchViews(mainWindow: FrameLayout, thumbnailWindow1: FrameLayout, thumbnailWindow2: FrameLayout, isLeftThumbnail: Boolean) {
+        val view1 = mainWindow.getChildAt(0)
+        val view2 = thumbnailWindow1.getChildAt(0)  // 左视图
+        val view3 = thumbnailWindow2.getChildAt(0)
 
-        if (isFullScreen) {
-            // 当前是全屏模式，切换为缩略模式
-            constraintSet.constrainWidth(fullScreenView.id, 400)
-            constraintSet.constrainHeight(fullScreenView.id, 400)
-            constraintSet.connect(fullScreenView.id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-            constraintSet.connect(fullScreenView.id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
-            constraintSet.connect(fullScreenView.id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
+        if (isLeftThumbnail) {
+            // 左视图，左视图和主视图切换
+            // 确保视图已从其父视图中移除
+            (view1.parent as? ViewGroup)?.removeView(view1)
+            (view2.parent as? ViewGroup)?.removeView(view2)
 
+            mainWindow.addView(view2)
+            thumbnailWindow1.addView(view1)
 
-            constraintSet.constrainWidth(thumbnailView.id,ConstraintSet.MATCH_CONSTRAINT)
-            constraintSet.constrainHeight(thumbnailView.id, 900)
-            constraintSet.connect(thumbnailView.id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
-//            constraintSet.connect(thumbnailView.id, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
-            constraintSet.connect(thumbnailView.id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-            constraintSet.connect(thumbnailView.id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
-
-            fullScreenView.bringToFront()
         } else {
-            // 当前是缩略模式，切换为全屏模式
-            constraintSet.constrainWidth(fullScreenView.id,2200)
-            constraintSet.constrainHeight(fullScreenView.id, 900)
-            constraintSet.connect(fullScreenView.id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
-//            constraintSet.connect(fullScreenView.id, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
-            constraintSet.connect(fullScreenView.id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-//            constraintSet.connect(fullScreenView.id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
+            (view1.parent as? ViewGroup)?.removeView(view1)
+            (view3.parent as? ViewGroup)?.removeView(view3)
 
-            constraintSet.constrainWidth(thumbnailView.id, 400)
-            constraintSet.constrainHeight(thumbnailView.id, 400)
-            constraintSet.connect(thumbnailView.id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-            constraintSet.connect(thumbnailView.id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
-            constraintSet.connect(thumbnailView.id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
-
-            // 将 thumbnailView 提到前台
-            thumbnailView.bringToFront()
+            mainWindow.addView(view3)
+            thumbnailWindow2.addView(view1)
         }
 
-        constraintSet.applyTo(constraintLayout)
+        // 确保透明层在最上方，且可以点击
+        thumbnail_click_overlay.bringToFront()
+        thumbnail_click_overlay_left.bringToFront()
 
-        isFullScreen = !isFullScreen
     }
-
 
     private fun prepareMissionData() {
 
@@ -287,6 +273,7 @@ class WayPointV3Fragment : DJIFragment() {
 
 
         btn_mission_start.setOnClickListener {
+//            virtualStickVM.setRightPosition(200,0)
             wayPointV3VM.startMission(
                 FileUtils.getFileName(curMissionPath, WAYPOINT_FILE_TAG),
                 selectWaylines,
@@ -299,7 +286,6 @@ class WayPointV3Fragment : DJIFragment() {
                         ToastUtils.showToast("startMission Failed " + getErroMsg(error))
                     }
                 })
-
         }
 
         btn_mission_pause.setOnClickListener {
@@ -465,6 +451,13 @@ class WayPointV3Fragment : DJIFragment() {
             workManager.enqueue(photoProcessingWorkRequest)
 
             // 监听结果
+            val outputData = workManager.getWorkInfoByIdLiveData(photoProcessingWorkRequest.id).value?.outputData
+            val resultValue = outputData?.getDouble("result_value",0.0)
+            if (resultValue != null){
+                callback(resultValue)
+            }
+
+            // 监听结果
             workManager.getWorkInfoByIdLiveData(photoProcessingWorkRequest.id).observe(
                 viewLifecycleOwner
             ) { workInfo: WorkInfo? ->
@@ -485,6 +478,22 @@ class WayPointV3Fragment : DJIFragment() {
                 }
             }
 
+//            // 监听结果
+//            // 获取工作状态（阻塞方式，适合在后台线程使用）
+//            val workInfo = workManager.getWorkInfoById(photoProcessingWorkRequest.id).get()
+//            if (workInfo != null && workInfo.state.isFinished) {
+//                if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+//                    val outputData = workInfo.outputData
+//                    val resultValue = outputData.getDouble("result_value", 0.0)
+//                    Log.d(TAG, "resultValue: $resultValue")
+//                    callback(resultValue)
+//                } else if (workInfo.state == WorkInfo.State.FAILED) {
+//                    callback(1200.0) // 处理失败时返回默认值
+//                }
+//                // 继续处理队列中的任务
+//                isRunning = false
+//                processNextTask()
+//            }
 
             i++
 

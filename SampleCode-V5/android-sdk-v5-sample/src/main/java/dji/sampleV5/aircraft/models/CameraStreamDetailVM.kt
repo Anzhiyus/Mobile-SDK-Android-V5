@@ -8,6 +8,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import dji.sampleV5.aircraft.util.ToastUtils
 import dji.sdk.keyvalue.key.CameraKey
+import dji.sdk.keyvalue.value.camera.CameraHybridZoomSpec
 import dji.sdk.keyvalue.value.camera.CameraType
 import dji.sdk.keyvalue.value.camera.CameraVideoStreamSourceType
 import dji.sdk.keyvalue.value.common.ComponentIndexType
@@ -138,7 +139,10 @@ class CameraStreamDetailVM : DJIViewModel() {
                             Log.d("SPF","开始")
                             Log.d("SPF",result.toString())
                         }
-
+                        // 测试查看焦距
+                        val cameraZoomSpec = CameraHybridZoomSpec()
+                        val maxFocalLength = cameraZoomSpec.maxFocalLength.toDouble()
+                        Log.d("SPF","Max Focal Length: $maxFocalLength")
 
                         // 将frameData转换为RGBA格式的字节数组
                         val rgbaData = byteArrayToRGBAByteArray(frameData, offset, length)

@@ -26,6 +26,7 @@ import android.widget.*
 import androidx.annotation.IntDef
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.work.Data
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkInfo
@@ -83,6 +84,7 @@ import io.reactivex.rxjava3.schedulers.Schedulers
 import kotlinx.android.synthetic.main.dialog_add_waypoint.view.*
 import kotlinx.android.synthetic.main.frag_waypointv3_page.*
 import kotlinx.android.synthetic.main.view_mission_setting_home.*
+import kotlinx.coroutines.launch
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
@@ -93,6 +95,8 @@ import java.io.FileReader
 import java.io.IOException
 import java.util.*
 import java.util.regex.Pattern
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import kotlin.math.pow
 
 
@@ -132,6 +136,8 @@ class WayPointV3Fragment : DJIFragment() {
     private val SHARED_PREFS_NAME = "WorkerData"
 
     var i = 0
+
+    var pictureArray: Array<String> = arrayOf()
 
     // 判断OpenCV是否加载成功
     private val loaderCallback: BaseLoaderCallback = object : BaseLoaderCallback(context) {
@@ -385,6 +391,8 @@ class WayPointV3Fragment : DJIFragment() {
         observeAircraftLocation()
 
         btn_take_photo_spf.setOnClickListener {
+            ToastUtils.showToast("ToastUtils：DJI开始")
+            Log.d(TAG, "DJI开始")
             mediaVM.takePhoto(object : CommonCallbacks.CompletionCallback {
                 override fun onSuccess() {
                     ToastUtils.showToast("take photo success")
@@ -396,22 +404,67 @@ class WayPointV3Fragment : DJIFragment() {
             })
         }
 
+//        btn_download_photo_spf.setOnClickListener {
+////            var bitmap: ByteArray? = downloadPhotoByteArray()
+//            var path1: String? = downloadPhotoFixedPath()
+////            val path1: String = picturearray.get(i)
+//            Log.d(TAG, "picturearray: $path1")
+//
+//            var resultValue: Double = 0.0
+//
+//            if (path1 != null) {
+//                initDownloadPhoto(path1, 20.0, 0.04, 4.5 / 1000 / 1000) { result ->
+//                    resultValue = result
+//                    Log.d(TAG, "回调返回的结果: $resultValue")
+//                    // 这里可以使用 resultValue 变量做进一步处理
+//                }
+//            }
+//
+//        }
+
         btn_download_photo_spf.setOnClickListener {
-//            var bitmap: ByteArray? = downloadPhotoByteArray()
-            var path1: String? = downloadPhotoFixedPath()
-//            val path1: String = picturearray.get(i)
-            Log.d(TAG, "picturearray: $path1")
+            ToastUtils.showToast( "DJI开始")
+            Log.d(TAG, "Log：DJI开始")
+//            lifecycleScope.launch {
+                // 调用 downloadPhotoFixedPath 获取路径
 
-            var resultValue: Double = 0.0
 
-            if (path1 != null) {
-                initDownloadPhoto(path1, 20.0, 0.04, 4.5 / 1000 / 1000) { result ->
-                    resultValue = result
-                    Log.d(TAG, "回调返回的结果: $resultValue")
-                    // 这里可以使用 resultValue 变量做进一步处理
+                for (i in pictureArray.indices) {
+                    val path = pictureArray[i]
+                    ToastUtils.showToast("DJI回调返回的结果: $path")
+
+                    var resultValue: Double = 0.0
+
+                    if (path != null) {
+                        // 路径获取成功，调用 initDownloadPhoto 进行计算
+                        initDownloadPhoto(path, 27.7, 0.01229, 3.3 / 1000 / 1000) { result ->
+                            resultValue = result
+                            ToastUtils.showToast("DJI回调返回的结果: $resultValue")
+                            // 这里可以使用 resultValue 变量做进一步处理
+                        }
+                    } else {
+                        ToastUtils.showToast("DJI回调返回的结果: 下载失败，无法获取路径")
+                    }
                 }
-            }
+//            }
 
+
+
+//            downloadPhotoFixedPath { path1 ->
+//                Log.d(TAG, "picturearray: $path1")
+//
+//                var resultValue: Double = 0.0
+//
+//                if (path1 != null) {
+//                    initDownloadPhoto(path1, 20.0, 0.04, 4.5 / 1000 / 1000) { result ->
+//                        resultValue = result
+//                        Log.d(TAG, "回调返回的结果: $resultValue")
+//                        // 这里可以使用 resultValue 变量做进一步处理
+//                    }
+//                } else {
+//                    Log.e(TAG, "下载图片失败，路径为 null")
+//                }
+//            }
         }
 
     }
@@ -624,20 +677,94 @@ class WayPointV3Fragment : DJIFragment() {
         return BaseLine
     }
 
-    fun downloadPhotoFixedPath() : String? {
-        var bitmap: String? = null
-        // 获取文件列表
-        // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
-        mediaVM.pullMediaFileListFromCamera(-1, 1)
+//    fun downloadPhotoFixedPath() : String? {
+//        var bitmap: String? = null
+//        // 获取文件列表
+//        // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
+//        mediaVM.pullMediaFileListFromCamera(-1, 1)
+//
+//        // 你可以在 mediaFileListData 更新后再处理选择逻辑，以确保数据已经更新
+//        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
+//            // 下载文件
+//            val mediafiles: ArrayList<MediaFile> = ArrayList(mediaVM.mediaFileListData.value?.data!!)
+//            bitmap = mediaVM.downloadMediaFileFixedPath(mediafiles)
+//        }
+//        return bitmap
+//    }
 
-        // 你可以在 mediaFileListData 更新后再处理选择逻辑，以确保数据已经更新
-        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
-            // 下载文件
-            val mediafiles: ArrayList<MediaFile> = ArrayList(mediaVM.mediaFileListData.value?.data!!)
-            bitmap = mediaVM.downloadMediaFileFixedPath(mediafiles)
-        }
-        return bitmap
-    }
+    // onDownloadComplete回调
+//    fun downloadPhotoFixedPath(onDownloadComplete: (String?) -> Unit) {
+//        // 获取文件列表
+//        mediaVM.pullMediaFileListFromCamera(-1, 1)
+//
+//        // 监听 mediaFileListData 的变化
+//        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
+//            // 确保数据更新后再处理
+//            val mediafiles: ArrayList<MediaFile> = ArrayList(mediaVM.mediaFileListData.value?.data!!)
+//
+//            // 下载文件并在下载完成后通过回调返回结果
+//            mediaVM.downloadMediaFileFixedPath(mediafiles) { filepath ->
+//                onDownloadComplete(filepath)  // 文件路径或 null
+//            }
+//        }
+//    }
+
+//    suspend fun downloadPhotoFixedPath(): String? {
+//        // 获取文件列表
+//        mediaVM.pullMediaFileListFromCamera(-1, 1)
+//
+//        // 等待 mediaFileListData 的更新
+//        val mediafiles = suspendCoroutine<List<MediaFile>?> { continuation ->
+//            mediaVM.mediaFileListData.observe(viewLifecycleOwner) { mediaFileList ->
+//                val files = mediaFileList.data
+//                if (files != null) {
+//                    continuation.resume(files) // 数据更新后返回列表
+//                } else {
+//                    continuation.resume(null)  // 处理为空的情况
+//                }
+//            }
+//        }
+//
+//        // 确保 mediafiles 不为空并进行下载
+//        return if (!mediafiles.isNullOrEmpty()) {
+//            mediaVM.downloadMediaFileFixedPath(ArrayList(mediafiles))
+//        } else {
+//            null  // 当文件列表为空时，返回 null
+//        }
+//    }
+
+
+    /**
+     * 列出当前文件夹内某一文件类型的文件名
+     * @param folderPath 文件夹路径
+     * @param pattern 匹配的正则表达式
+     * @return 匹配的文件名数组
+     */
+//    fun getMatchingFileNames(folderPath: String, pattern: String): Array<String> {
+//        val regex = Pattern.compile(pattern) // ".+\\.txt"
+//        val matchingFileNames = mutableListOf<String>()
+//        val directory = File(folderPath)
+//
+//        if (directory.exists() && directory.isDirectory) {
+//            val files = directory.listFiles()
+//            files?.forEach { file ->
+//                if (file.isFile && regex.matcher(file.name).matches()) {
+//                    matchingFileNames.add("${folderPath}/${file.name}")
+//                }
+//            }
+//        }
+//
+//        matchingFileNames.sort() // 对匹配的文件名进行排序
+//        return matchingFileNames.toTypedArray() // 返回数组
+//    }
+
+
+
+
+
+
+
+
 
     private fun saveKmz(showToast: Boolean) {
         val kmzOutPath = rootDir + "generate_test.kmz"
@@ -1010,6 +1137,14 @@ class WayPointV3Fragment : DJIFragment() {
                 wayline_aircraft_speed?.text = String.format("Aircraft Speed: %.2f", it.speed)
             }
         }
+
+        // 获取外部存储路径中的某一文件夹中的满足某一条件文件名的文件名数组。需手动放置数据
+        // 路径示例：Android/data/cas.igsnrr.dronefly/files/Pictures/DJI/DJI***.jpg
+        pictureArray = getMatchingFileNames(
+            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20241025",
+            "^DJI_20241025.*\\.(jpg|JPG)"
+        )
+        ToastUtils.showToast( "DJI开始：${requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20241025"}")
     }
 
 

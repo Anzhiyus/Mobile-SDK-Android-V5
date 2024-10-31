@@ -283,7 +283,7 @@ class PhotoProcessing {
             val elapsedTime = endTime - startTime
 
             // 根据行高 AviationHigh 和坐标 AviationHighPoints 进行反距离加权
-            return PhotoProcessingWorker.calculateIDW(AviationHigh, AviationHighPoints)
+            return PhotoProcessingWorker.calculateWeight(AviationHigh, AviationHighPoints)
         }
 
         /** 滑动窗口反距离加权平均算法你
@@ -317,7 +317,7 @@ class PhotoProcessing {
                     values[i] = subdemData[dataSize - 1 - i] // 反向，最后的数据给的距离最短，权重最大
                     points[i] = Point(weights[i], 0.0)
                 }
-                smoothmean = PhotoProcessingWorker.calculateIDW(values, points)
+                smoothmean = PhotoProcessingWorker.calculateWeight(values, points)
                 demData[demData.size - 1] = smoothmean
             }
             return smoothmean

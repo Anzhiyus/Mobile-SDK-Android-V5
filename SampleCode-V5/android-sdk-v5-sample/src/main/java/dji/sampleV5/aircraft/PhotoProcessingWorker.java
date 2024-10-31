@@ -35,6 +35,7 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -69,7 +70,6 @@ public class PhotoProcessingWorker extends Worker {
         String bitmapPath1 = getInputData().getString("photo_path");
 
         // 获取传输数据
-
         String path1 = getInputData().getString("photo_path");
         double baseLine = getInputData().getDouble("photo_baseLine", 100);
         double FocalLength = getInputData().getDouble("photo_focallength", 0.04);
@@ -111,9 +111,10 @@ public class PhotoProcessingWorker extends Worker {
             e.printStackTrace();
         }
 
-//        double FocalLength = 0.04;
-//        double PixelDim = 4.5/1000/1000; // 米/像素
+        Log.d(TAG, "img1Bitmap分辨率宽: "+img1Bitmap.getWidth());
+        Log.d(TAG, "img2Bitmap分辨率高: "+img2Bitmap.getHeight());
         double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
+        Log.d(TAG, "idw: "+idw);
         // 数据暂存缓存路径
         tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
 
@@ -123,9 +124,9 @@ public class PhotoProcessingWorker extends Worker {
         tempDataIdw = idw;
 
         // 第一次加权平滑结果
-        calculateIDWSmooth(idwData_Smooth1, idw, 10,weights);
+        calculateWeightSmooth(idwData_Smooth1, idw, 10,weights);
         // 第二次加权平滑结果
-        smoothmean = calculateIDWSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
+        smoothmean = calculateWeightSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
 
         Log.d(TAG, "smoothmean: "+smoothmean);
 
@@ -243,6 +244,7 @@ public class PhotoProcessingWorker extends Worker {
 
         double[] AviationHigh = new double[dmatchArray.length];
         Point[] AviationHighPoints = new Point[dmatchArray.length];
+        double[] angleDegress = new double[dmatchArray.length];
 
         // 距离=焦距*基线/视差   AviationHigh=FocalLength * BaseLine /  Parallax
         for (int i = 0; i < dmatchArray.length; i++) {
@@ -251,27 +253,41 @@ public class PhotoProcessingWorker extends Worker {
             int Idx2=dmatchArray[i].trainIdx;
             Point point1= new Point(keyPointArray1[Idx1].pt.x-img1.cols()/2,  keyPointArray1[Idx1].pt.y-img1.rows()/2);
             Point point2= new Point(keyPointArray2[Idx2].pt.x-img2.cols()/2,  keyPointArray2[Idx2].pt.y-img2.rows()/2);
+
+            // 确定航线方向
+            angleDegress[i] = calculateAngle(point1, point2);
+
             // 视差
             double Parallax=Math.sqrt((point1.x - point2.x) *(point1.x - point2.x)+ (point1.y - point2.y)*(point1.y - point2.y));
-            // 距离=焦距*基线/视差   AviationHigh=FocalLength * BaseLine / (Parallax * PixelDim)
             AviationHighPoints[i]=new Point(keyPointArray2[Idx2].pt.x-img2.cols()/2, keyPointArray2[Idx2].pt.y-img2.rows()/2);
-
+            // 距离=焦距*基线/视差   AviationHigh=FocalLength * BaseLine / (Parallax * PixelDim)
             AviationHigh[i]=FocalLength * BaseLine / (Parallax * PixelDim);
-            if (AviationHigh[i] < 200) {
-                AviationHigh[i] = 200.0;
+
+            // 阈值判断
+            if (AviationHigh[i] < 60) {
+                AviationHigh[i] = 60.0;
             }
-            // 如果元素大于max，则修正为max
             else if (AviationHigh[i] > 1200) {
                 AviationHigh[i] = 1200.0;
             }
         }
 
+        // 航线方向平均值
+        double angleDegressAverage = calculateAverage(angleDegress);
+        // 沿航线方向的边界点
+        Point boundaryPoint = calculateBoundaryPoint(new Point(img2.cols()/2, img2.rows()/2), angleDegressAverage>180?angleDegressAverage-180:angleDegressAverage+180, img2.cols(), img2.rows());
+
         // 执行需要测量运行时间的代码块
         long endTime = System.nanoTime();
         long elapsedTime = endTime - startTime;
 
+        // 航高过滤5%和95%
+        filterDataInPlace(AviationHigh, AviationHighPoints);
+
         // 根据行高 AviationHigh 和坐标 AviationHighPoints 进行反距离加权
-        double idw = calculateIDW(AviationHigh, AviationHighPoints);
+        double idw = calculateWeight(AviationHigh, AviationHighPoints);
+        double weightedAviationHighGS = calculateWeightGS(AviationHigh, AviationHighPoints, boundaryPoint, img2.cols()/3);
+        Log.d(TAG, "GS距离加权: "+weightedAviationHighGS);
         return idw;
     }
 
@@ -281,7 +297,7 @@ public class PhotoProcessingWorker extends Worker {
      * @param points 坐标
      * @return
      */
-    public static double calculateIDW(double[] values, Point[] points) {
+    public static double calculateWeight(double[] values, Point[] points) {
         if (values.length != points.length || values.length == 0) {
             return 0;
         }
@@ -302,6 +318,32 @@ public class PhotoProcessingWorker extends Worker {
         return weightedSum / weightSum;
     }
 
+    public static double calculateWeightGS(double[] values, Point[] points, Point boundaryPoint, double radius) {
+
+
+        if (values.length != points.length || values.length == 0) {
+            return 0;
+        }
+        // double radius = width / 3.0; // 使用照片宽度的1/3作为半径
+        double sigma = radius / 3.0; // 设置高斯分布的标准差，控制平滑程度
+
+        double weightedSum = 0.0;
+        double weightSum = 0.0;
+
+        for (int i = 0; i < values.length; i++) {
+            double distance = Math.sqrt(Math.pow(points[i].x - boundaryPoint.x, 2) + Math.pow(points[i].y - boundaryPoint.y, 2));
+            // 使用高斯函数计算权重，超过radius范围的急剧降低
+            double weight = (distance > radius) ? 0.1 : Math.exp(-Math.pow(distance, 2) / (2 * Math.pow(sigma, 2)));
+            weightedSum += values[i] * weight;
+            weightSum += weight;
+        }
+
+        if (weightSum == 0.0) {
+            throw new ArithmeticException("Cannot divide by zero. All point distances are zero.");
+        }
+        return weightedSum / weightSum;
+    }
+
     /** 滑动窗口反距离加权平均算法你
      * 将newData数据加入到数组demData中，当数组数量超过beta个时，开始对newData数据进行加权计算
      * 将newData数据之前的（包括newData）进行加权，得到的值赋给newData数据
@@ -311,7 +353,7 @@ public class PhotoProcessingWorker extends Worker {
      * @param weights 权重数组，自定义
      * @return 加权计算结果
      */
-    public double calculateIDWSmooth(List<Double> demData, double newData ,int beta, double[] weights) {
+    public double calculateWeightSmooth(List<Double> demData, double newData ,int beta, double[] weights) {
         double smoothmean = newData;
         demData.add(newData);
 
@@ -327,11 +369,59 @@ public class PhotoProcessingWorker extends Worker {
                 values[i] = subdemData.get(dataSize-1-i);  // 反向，最后的数据给的距离最短，权重最大
                 points[i] = new Point(weights[i],0);
             }
-            smoothmean = calculateIDW(values, points);
+            smoothmean = calculateWeight(values, points);
             demData.set(demData.size() - 1, smoothmean);
         }
         return smoothmean;
     }
+
+    // 重载方法，使用默认参数
+    public static List<Double> applyKalmanFilter(List<Double> existingData, double newData) {
+        return applyKalmanFilter(existingData, newData, 0.05, 0.5, 0.05, 0.5);
+    }
+
+    public static List<Double> applyKalmanFilter(List<Double> existingData, double newData,
+                                                 double processNoise1, double measurementNoise1,
+                                                 double processNoise2, double measurementNoise2) {
+        // processNoise1越小越平滑，measurementNoise1相反，并且两者作用好像类似即只需要调一个参数即可
+        // 如果已有数据为空，初始化第一个数据点
+        if (existingData.isEmpty()) {
+            existingData.add(newData);
+            return existingData;
+        }
+
+        // 初始化第一次滤波的状态估计和误差协方差
+        double estimatedValue1 = existingData.get(existingData.size() - 1);
+        double estimatedError1 = 1.0;
+
+        // 初始化第二次滤波的状态估计和误差协方差
+        double estimatedValue2 = existingData.get(existingData.size() - 1);
+        double estimatedError2 = 1.0;
+
+        // 第一次滤波 - 预测阶段
+        double predictedValue1 = estimatedValue1;
+        double predictedError1 = estimatedError1 + processNoise1;
+
+        // 第一次滤波 - 更新阶段
+        double kalmanGain1 = predictedError1 / (predictedError1 + measurementNoise1);
+        estimatedValue1 = predictedValue1 + kalmanGain1 * (newData - predictedValue1);
+        estimatedError1 = (1 - kalmanGain1) * predictedError1;
+
+        // 第二次滤波 - 预测阶段
+        double predictedValue2 = estimatedValue2;
+        double predictedError2 = estimatedError2 + processNoise2;
+
+        // 第二次滤波 - 更新阶段
+        double kalmanGain2 = predictedError2 / (predictedError2 + measurementNoise2);
+        estimatedValue2 = predictedValue2 + kalmanGain2 * (estimatedValue1 - predictedValue2);
+        estimatedError2 = (1 - kalmanGain2) * predictedError2;
+
+        // 将二次滤波的结果添加到数据列表中
+        existingData.add(estimatedValue2);
+        return existingData;
+    }
+
+
 
     // 计算点到中心的距离
     private static double calculateDistanceToCenter(Point point) {
@@ -339,5 +429,96 @@ public class PhotoProcessingWorker extends Worker {
         return Math.sqrt(point.x * point.x + point.y * point.y);
     }
 
+    // Step 1: 计算角度
+    public static double calculateAngle(Point point1, Point point2) {
+        double deltaX = point2.x - point1.x;
+        double deltaY = point1.y - point2.y; // y轴反向
+        double angleInDegrees = Math.toDegrees(Math.atan2(deltaY, deltaX));
+        return (angleInDegrees < 0) ? angleInDegrees + 360 : angleInDegrees;
+    }
+
+    // Step 2: 计算沿该角度的边界点
+    public static Point calculateBoundaryPoint(Point center, double angle, int width, int height) {
+        // 转换为弧度
+        double angleInRadians = Math.toRadians(angle);
+
+        // 使用边界计算最大位移，宽高的最大半径
+        double maxRadiusX = width / 2.0;
+        double maxRadiusY = height / 2.0;
+
+        // 计算位移到边界时的x, y坐标
+        float boundaryX = (float) (center.x + maxRadiusX * Math.cos(angleInRadians));
+        float boundaryY = (float) (center.y - maxRadiusY * Math.sin(angleInRadians)); // y轴向下
+
+        return new Point(boundaryX, boundaryY);
+    }
+
+    // Step 3: 以边界点为中心的高斯加权
+    public static double[][] generateWeightMatrix(int width, int height, Point boundaryPoint) {
+        double[][] weightMatrix = new double[height][width];
+
+        double radius = width / 3.0; // 使用照片宽度的1/3作为半径
+        double sigma = radius / 3.0; // 设置高斯分布的标准差，控制平滑程度
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                double distance = Math.sqrt(Math.pow(x - boundaryPoint.x, 2) + Math.pow(y - boundaryPoint.y, 2));
+
+                // 使用高斯函数计算权重，超过radius范围的急剧降低
+                double weight = (distance > radius) ? 0.1 : Math.exp(-Math.pow(distance, 2) / (2 * Math.pow(sigma, 2)));
+
+                // 将权重值插入矩阵
+                weightMatrix[y][x] = weight;
+            }
+        }
+
+        return weightMatrix;
+    }
+
+    public static double calculateAverage(double[] array) {
+        if (array == null || array.length == 0) {
+            throw new IllegalArgumentException("Array cannot be null or empty");
+        }
+
+        double sum = 0.0;
+        for (double num : array) {
+            sum += num;
+        }
+
+        return sum / array.length;
+    }
+
+    public static void filterDataInPlace(double[] aviationHigh, Point[] aviationHighPoints) {
+        int n = aviationHigh.length;
+        int numToRemove = (int) (n * 0.05);  // 5% 的元素数
+
+        // 创建一个索引数组并初始化
+        Integer[] indices = new Integer[n];
+        for (int i = 0; i < n; i++) {
+            indices[i] = i;
+        }
+
+        // 按 aviationHigh 的值升序排序索引
+        Arrays.sort(indices, new Comparator<Integer>() {
+            @Override
+            public int compare(Integer i1, Integer i2) {
+                return Double.compare(aviationHigh[i1], aviationHigh[i2]);
+            }
+        });
+
+        // 创建新的数组来存储保留的元素
+        double[] filteredAviationHigh = new double[n - 2 * numToRemove];
+        Point[] filteredAviationHighPoints = new Point[n - 2 * numToRemove];
+
+        // 复制保留的元素到新的数组
+        for (int i = numToRemove; i < n - numToRemove; i++) {
+            filteredAviationHigh[i - numToRemove] = aviationHigh[indices[i]];
+            filteredAviationHighPoints[i - numToRemove] = aviationHighPoints[indices[i]];
+        }
+
+        // 将结果复制回原数组中
+        System.arraycopy(filteredAviationHigh, 0, aviationHigh, 0, filteredAviationHigh.length);
+        System.arraycopy(filteredAviationHighPoints, 0, aviationHighPoints, 0, filteredAviationHighPoints.length);
+    }
 
 }

@@ -9,6 +9,11 @@
 
 
 
+
+
+
+
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/fpv_holder"
         android:layout_width="0dp"
@@ -32,6 +37,35 @@
         </FrameLayout>
 
         <FrameLayout
+            android:id="@+id/thumbnail_window_left"
+            android:layout_width="400px"
+            android:layout_height="400px"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <dji.v5.ux.core.widget.fpv.FPVWidget
+                android:id="@+id/widget_primary_fpv"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:uxsdk_cameraNameTextSize="4dp"
+                app:uxsdk_cameraSideTextSize="4dp"
+                app:uxsdk_videoChannelType="primaryStreamChannel"
+                >
+            </dji.v5.ux.core.widget.fpv.FPVWidget>
+
+            <!-- 透明的点击覆盖层 -->
+            <View
+                android:id="@+id/thumbnail_click_overlay_left"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:clickable="true"
+                android:focusable="true" />
+
+        </FrameLayout>
+
+        <FrameLayout
             android:id="@+id/thumbnail_window"
             android:layout_width="400px"
             android:layout_height="400px"
@@ -39,15 +73,13 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintBottom_toBottomOf="parent">
 
-            <dji.v5.ux.core.widget.fpv.FPVWidget
-                android:id="@+id/widget_primary_fpv"
+            <androidx.fragment.app.FragmentContainerView
+                android:id="@+id/widget_secondary_fpv"
+                android:name="dji.sampleV5.aircraft.pages.SPFCameraStreamListFragment"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                app:uxsdk_cameraNameTextSize="14dp"
-                app:uxsdk_cameraSideTextSize="14dp"
-                app:uxsdk_videoChannelType="primaryStreamChannel"
-                >
-            </dji.v5.ux.core.widget.fpv.FPVWidget>
+                android:tag="SECONDARY_STREAM_CHANNEL"
+                />
 
             <!-- 透明的点击覆盖层 -->
             <View
@@ -58,34 +90,6 @@
                 android:clickable="true"
                 android:focusable="true" />
 
-        </FrameLayout>
-
-        <FrameLayout
-            android:id="@+id/thumbnail_window_left"
-            android:layout_width="400px"
-            android:layout_height="400px"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent">
-
-            <dji.v5.ux.core.widget.fpv.FPVWidget
-                android:id="@+id/widget_secondary_fpv"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                app:uxsdk_cameraNameTextSize="8dp"
-                app:uxsdk_cameraSideTextSize="8dp"
-                app:uxsdk_interactionEnabled="false"
-                app:uxsdk_sourceCameraNameVisibility="true"
-                app:uxsdk_videoChannelType="secondaryStreamChannel" />
-
-            <!-- 透明的点击覆盖层 -->
-            <View
-                android:id="@+id/thumbnail_click_overlay_left"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="@android:color/transparent"
-                android:clickable="true"
-                android:focusable="true" />
         </FrameLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 

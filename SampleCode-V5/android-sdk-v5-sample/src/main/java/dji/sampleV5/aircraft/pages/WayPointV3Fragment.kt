@@ -19,19 +19,13 @@ import android.provider.DocumentsContract
 import android.text.TextUtils
 import android.util.Log
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.annotation.IntDef
-import androidx.constraintlayout.widget.ConstraintSet
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
-import androidx.work.Data
-import androidx.work.OneTimeWorkRequest
-import androidx.work.WorkInfo
-import androidx.work.WorkManager
-import androidx.work.WorkRequest
+import androidx.work.*
 import com.dji.industry.mission.DocumentsUtils
 import com.dji.wpmzsdk.common.data.HeightMode
 import com.dji.wpmzsdk.common.data.Template
@@ -55,6 +49,10 @@ import dji.sdk.wpmz.value.mission.*
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.common.utils.GpsUtils
+import dji.v5.common.video.channel.VideoChannelState
+import dji.v5.common.video.channel.VideoChannelType
+import dji.v5.common.video.interfaces.IVideoChannel
+import dji.v5.common.video.interfaces.VideoChannelStateChangeListener
 import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.simulator.SimulatorManager
 import dji.v5.manager.aircraft.waypoint3.WPMZParserManager
@@ -65,9 +63,11 @@ import dji.v5.manager.aircraft.waypoint3.model.BreakPointInfo
 import dji.v5.manager.aircraft.waypoint3.model.RecoverActionType
 import dji.v5.manager.aircraft.waypoint3.model.WaylineExecutingInfo
 import dji.v5.manager.aircraft.waypoint3.model.WaypointMissionExecuteState
+import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.datacenter.media.MediaFile
 import dji.v5.utils.common.*
 import dji.v5.utils.common.DeviceInfoUtil.getPackageName
+import dji.v5.utils.common.ThreadUtil.runOnUiThread
 import dji.v5.ux.accessory.DescSpinnerCell
 import dji.v5.ux.map.MapWidget
 import dji.v5.ux.mapkit.core.maps.DJIMap
@@ -84,7 +84,9 @@ import io.reactivex.rxjava3.schedulers.Schedulers
 import kotlinx.android.synthetic.main.dialog_add_waypoint.view.*
 import kotlinx.android.synthetic.main.frag_waypointv3_page.*
 import kotlinx.android.synthetic.main.view_mission_setting_home.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
@@ -95,10 +97,10 @@ import java.io.FileReader
 import java.io.IOException
 import java.util.*
 import java.util.regex.Pattern
+import javax.xml.transform.stream.StreamSource
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+import kotlin.coroutines.resumeWithException
 import kotlin.math.pow
-
 
 /**
  * @author feel.feng
@@ -139,6 +141,7 @@ class WayPointV3Fragment : DJIFragment() {
 
     var pictureArray: Array<String> = arrayOf()
 
+
     // 判断OpenCV是否加载成功
     private val loaderCallback: BaseLoaderCallback = object : BaseLoaderCallback(context) {
         override fun onManagerConnected(status: Int) {
@@ -161,6 +164,8 @@ class WayPointV3Fragment : DJIFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+
+
         // 初始化OpenCV
         if (!OpenCVLoader.initDebug()) {
             Toast.makeText(context, "OpenCV初始化失败", Toast.LENGTH_SHORT).show()
@@ -180,6 +185,7 @@ class WayPointV3Fragment : DJIFragment() {
         prepareMissionData()
         initView(savedInstanceState)
         initData()
+        startTaskQueueConsumer()
         WPMZManager.getInstance().init(ContextUtil.getContext())
 
         mediaVM.init()
@@ -195,31 +201,30 @@ class WayPointV3Fragment : DJIFragment() {
         val view2 = thumbnailWindow1.getChildAt(0)  // 左视图
         val view3 = thumbnailWindow2.getChildAt(0)
 
+        (view1.parent as? ViewGroup)?.removeView(view1)
+        (view2.parent as? ViewGroup)?.removeView(view2)
+        (view3.parent as? ViewGroup)?.removeView(view3)
+
         if (isLeftThumbnail) {
             // 左视图，左视图和主视图切换
             // 确保视图已从其父视图中移除
-            (view1.parent as? ViewGroup)?.removeView(view1)
-            (view2.parent as? ViewGroup)?.removeView(view2)
-
             mainWindow.addView(view2)
             thumbnailWindow1.addView(view1)
-
+            // 第三个视图不变，但是会被遮挡，所以重新添加
+            thumbnailWindow2.addView(view3)
         } else {
-            (view1.parent as? ViewGroup)?.removeView(view1)
-            (view3.parent as? ViewGroup)?.removeView(view3)
-
             mainWindow.addView(view3)
             thumbnailWindow2.addView(view1)
+
+            thumbnailWindow1.addView(view2)
         }
 
         // 确保透明层在最上方，且可以点击
         thumbnail_click_overlay.bringToFront()
         thumbnail_click_overlay_left.bringToFront()
-
     }
 
     private fun prepareMissionData() {
-
         val dir = File(rootDir)
         if (!dir.exists()) {
             dir.mkdirs()
@@ -404,169 +409,131 @@ class WayPointV3Fragment : DJIFragment() {
             })
         }
 
-//        btn_download_photo_spf.setOnClickListener {
-////            var bitmap: ByteArray? = downloadPhotoByteArray()
-//            var path1: String? = downloadPhotoFixedPath()
-////            val path1: String = picturearray.get(i)
-//            Log.d(TAG, "picturearray: $path1")
-//
-//            var resultValue: Double = 0.0
-//
-//            if (path1 != null) {
-//                initDownloadPhoto(path1, 20.0, 0.04, 4.5 / 1000 / 1000) { result ->
-//                    resultValue = result
-//                    Log.d(TAG, "回调返回的结果: $resultValue")
-//                    // 这里可以使用 resultValue 变量做进一步处理
-//                }
-//            }
-//
-//        }
+//        // 读取视频流中的数据：
 
         btn_download_photo_spf.setOnClickListener {
-            ToastUtils.showToast( "DJI开始")
-            Log.d(TAG, "Log：DJI开始")
+            enqueueTask {
+                performTask()
+            }
+        }
+
+//        btn_download_photo_spf.setOnClickListener {
+//            Log.d(TAG, "Log：DJI开始")
 //            lifecycleScope.launch {
-                // 调用 downloadPhotoFixedPath 获取路径
-
-
-                for (i in pictureArray.indices) {
-                    val path = pictureArray[i]
-                    ToastUtils.showToast("DJI回调返回的结果: $path")
-
-                    var resultValue: Double = 0.0
-
-                    if (path != null) {
-                        // 路径获取成功，调用 initDownloadPhoto 进行计算
-                        initDownloadPhoto(path, 27.7, 0.01229, 3.3 / 1000 / 1000) { result ->
-                            resultValue = result
-                            ToastUtils.showToast("DJI回调返回的结果: $resultValue")
-                            // 这里可以使用 resultValue 变量做进一步处理
-                        }
-                    } else {
-                        ToastUtils.showToast("DJI回调返回的结果: 下载失败，无法获取路径")
-                    }
-                }
-//            }
-
-
-
-//            downloadPhotoFixedPath { path1 ->
-//                Log.d(TAG, "picturearray: $path1")
-//
-//                var resultValue: Double = 0.0
-//
-//                if (path1 != null) {
-//                    initDownloadPhoto(path1, 20.0, 0.04, 4.5 / 1000 / 1000) { result ->
-//                        resultValue = result
-//                        Log.d(TAG, "回调返回的结果: $resultValue")
-//                        // 这里可以使用 resultValue 变量做进一步处理
-//                    }
+//                val path = downloadPhotoFixedPath()
+//                Log.d(TAG, "path: $path")
+//                if (path != null) {
+//                    val resultValue = downloadPhotoSuspend(path, 27.7, 0.01229, 3.3 / 1000 / 1000, requireContext())
+//                    Log.d(TAG, "DJI回调返回的结果: $resultValue")
 //                } else {
-//                    Log.e(TAG, "下载图片失败，路径为 null")
+//                    Log.d(TAG, "DJI回调返回的结果: 下载失败，无法获取路径")
 //                }
 //            }
-        }
+//        }
 
+
+
+
+//        // 读取本地文件夹中的数据：
+//        btn_download_photo_spf.setOnClickListener {
+//            Log.d(TAG, "Log：DJI开始")
+//            lifecycleScope.launch {
+//                try {
+//                    for (i in pictureArray.indices) {
+//                        val path = pictureArray[i]
+//                        if (path != null) {
+//                            val resultValue = downloadPhotoSuspend(path, 27.7, 0.01229, 3.3 / 1000 / 1000, requireContext())
+//                            Log.d(TAG, "DJI回调返回的结果: $resultValue")
+//                        } else {
+//                            Log.d(TAG, "DJI回调返回的结果: 下载失败，无法获取路径")
+//                        }
+//                        Log.d(TAG, "for循环：$i")
+//                    }
+//                    Log.d(TAG, "for循环：结束")
+//                } catch (e: Exception) {
+//                    Log.e(TAG, "下载失败: ${e.message}")
+//                }
+//            }
+//        }
     }
 
-    // 任务队列
-    private val taskQueue = LinkedList<() -> Unit>()
-
-    // 当前是否正在执行任务
-    private var isRunning = false
-
-    fun initDownloadPhoto(
-        path1: String,
-        BaseLine: Double,
-        FocalLength: Double,
-        PixelDim: Double,
-        callback: (Double) -> Unit
-    ) {
-        // 将任务添加到队列中
-        taskQueue.add {
-
-            // 创建 WorkRequest
-            val photoProcessingWorkRequest: WorkRequest = OneTimeWorkRequest.Builder(PhotoProcessingWorker::class.java)
-                .setInputData(
-                    Data.Builder()
-                        .putString("photo_path", path1)
-                        .putDouble("photo_baseLine", BaseLine)
-                        .putDouble("photo_focallength", FocalLength)
-                        .putDouble("photo_pixeldim", PixelDim)
-                        .build()
-                )
-                .build()
-
-            // 获取 WorkManager 实例
-            val workManager = WorkManager.getInstance(requireContext())
-
-            // 启动工作
-            workManager.enqueue(photoProcessingWorkRequest)
-
-            // 监听结果
-            val outputData = workManager.getWorkInfoByIdLiveData(photoProcessingWorkRequest.id).value?.outputData
-            val resultValue = outputData?.getDouble("result_value",0.0)
-            if (resultValue != null){
-                callback(resultValue)
-            }
-
-            // 监听结果
-            workManager.getWorkInfoByIdLiveData(photoProcessingWorkRequest.id).observe(
-                viewLifecycleOwner
-            ) { workInfo: WorkInfo? ->
-                if (workInfo != null && workInfo.state.isFinished) {
-                    if (workInfo.state == WorkInfo.State.SUCCEEDED) {
-                        val outputData = workInfo.outputData
-                        val resultValue = outputData.getDouble("result_value", 0.0)
-                        // 使用 resultValue
-                        Log.d(TAG, "resultValue: $resultValue")
-                        callback(resultValue) // 调用回调函数
-                    } else if (workInfo.state == WorkInfo.State.FAILED) {
-                        // 处理失败情况
-                        callback(1200.0) // 处理失败时也调用回调函数返回一个默认值
-                    }
-                    // 任务完成后重置标志，并处理下一个任务
-                    isRunning = false
-                    processNextTask()
+    // 定义一个任务队列（Channel）
+    private val taskQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    // 初始化消费者协程
+    fun startTaskQueueConsumer() {
+        lifecycleScope.launch {
+            for (task in taskQueue) {
+                try {
+                    task() // 按顺序执行队列中的任务
+                } catch (e: Exception) {
+                    Log.e("TaskQueue", "任务执行失败: ${e.message}")
                 }
             }
-
-//            // 监听结果
-//            // 获取工作状态（阻塞方式，适合在后台线程使用）
-//            val workInfo = workManager.getWorkInfoById(photoProcessingWorkRequest.id).get()
-//            if (workInfo != null && workInfo.state.isFinished) {
-//                if (workInfo.state == WorkInfo.State.SUCCEEDED) {
-//                    val outputData = workInfo.outputData
-//                    val resultValue = outputData.getDouble("result_value", 0.0)
-//                    Log.d(TAG, "resultValue: $resultValue")
-//                    callback(resultValue)
-//                } else if (workInfo.state == WorkInfo.State.FAILED) {
-//                    callback(1200.0) // 处理失败时返回默认值
-//                }
-//                // 继续处理队列中的任务
-//                isRunning = false
-//                processNextTask()
-//            }
-
-            i++
-
-        }
-
-        // 如果当前没有任务在运行，处理队列中的任务
-        if (!isRunning) {
-            processNextTask()
-        }
-
-    }
-
-    // 处理队列中的下一个任务
-    private fun processNextTask() {
-        if (taskQueue.isNotEmpty()) {
-            isRunning = true
-            val task = taskQueue.poll()
-            task?.invoke()
         }
     }
+    // 添加任务到队列中
+    fun enqueueTask(task: suspend () -> Unit) {
+        lifecycleScope.launch {
+            taskQueue.send(task)
+        }
+    }
+    // 任务函数逻辑
+    suspend fun performTask() {
+        val path = downloadPhotoFixedPath()
+        Log.d("TaskQueue", "path: $path")
+        if (path != null) {
+            val resultValue = downloadPhotoSuspend(
+                path,
+                27.7,
+                0.01229,
+                3.3 / 1000 / 1000,
+                requireContext()
+            )
+            Log.d("TaskQueue", "DJI回调返回的结果: $resultValue")
+        } else {
+            Log.d("TaskQueue", "DJI回调返回的结果: 下载失败，无法获取路径")
+        }
+    }
+
+    // 使用Suspend挂起，调用Worker类
+    suspend fun downloadPhotoSuspend(
+        path: String,
+        baseLine: Double,
+        focalLength: Double,
+        pixelDim: Double,
+        context: Context
+    ): Double = suspendCancellableCoroutine { continuation ->
+
+        val workRequest = OneTimeWorkRequestBuilder<PhotoProcessingWorker>()
+            .setInputData(Data.Builder()
+                        .putString("photo_path", path)
+                        .putDouble("photo_baseLine", baseLine)
+                        .putDouble("photo_focallength", focalLength)
+                        .putDouble("photo_pixeldim", pixelDim)
+                        .build()
+                                        )
+            .build()
+
+        val workManager = WorkManager.getInstance(context)
+        workManager.enqueue(workRequest)
+
+        workManager.getWorkInfoByIdLiveData(workRequest.id).observeForever { workInfo ->
+            if (workInfo != null && workInfo.state.isFinished) {
+                if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+                    val resultValue = workInfo.outputData.getDouble("result_value", 0.0)
+                    continuation.resume(resultValue) // 成功时返回结果
+                } else {
+                    continuation.resumeWithException(Exception("Worker failed"))
+                }
+            }
+        }
+
+        continuation.invokeOnCancellation {
+            workManager.cancelWorkById(workRequest.id) // 取消任务
+        }
+    }
+
+
 
     fun clearSharedPreferences() {
         val sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
@@ -677,20 +644,20 @@ class WayPointV3Fragment : DJIFragment() {
         return BaseLine
     }
 
-//    fun downloadPhotoFixedPath() : String? {
-//        var bitmap: String? = null
-//        // 获取文件列表
-//        // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
-//        mediaVM.pullMediaFileListFromCamera(-1, 1)
-//
-//        // 你可以在 mediaFileListData 更新后再处理选择逻辑，以确保数据已经更新
-//        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
-//            // 下载文件
-//            val mediafiles: ArrayList<MediaFile> = ArrayList(mediaVM.mediaFileListData.value?.data!!)
-//            bitmap = mediaVM.downloadMediaFileFixedPath(mediafiles)
-//        }
-//        return bitmap
-//    }
+    fun downloadPhotoFixedPath() : String? {
+        var bitmap: String? = null
+        // 获取文件列表
+        // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
+        mediaVM.pullMediaFileListFromCamera(-1, 1)
+
+        // 你可以在 mediaFileListData 更新后再处理选择逻辑，以确保数据已经更新
+        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
+            // 下载文件
+            val mediafiles: ArrayList<MediaFile> = ArrayList(mediaVM.mediaFileListData.value?.data!!)
+            bitmap = mediaVM.downloadMediaFileFixedPath(mediafiles)
+        }
+        return bitmap
+    }
 
     // onDownloadComplete回调
 //    fun downloadPhotoFixedPath(onDownloadComplete: (String?) -> Unit) {

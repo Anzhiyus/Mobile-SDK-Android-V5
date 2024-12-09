@@ -146,7 +146,7 @@ public class DefaultLayoutActivity extends AppCompatActivity {
 //        topBarPanel = findViewById(R.id.panel_top_bar);
 //        settingWidget = topBarPanel.getSettingWidget();  // mDrawerLayout 有问题,这个也无法用
         primaryFpvWidget = findViewById(R.id.widget_primary_fpv);
-//        fpvInteractionWidget = findViewById(R.id.widget_fpv_interaction);
+//        fpvInteractionWidget = findViewById(R.id.widget_fpv_interaction); // fpv交互
         secondaryFPVWidget = findViewById(R.id.widget_secondary_fpv);
 //        systemStatusListPanelWidget = findViewById(R.id.widget_panel_system_status_list);
 //        simulatorControlWidget = findViewById(R.id.widget_simulator_control);  // simulatorControlWidget 相关有问题
@@ -164,11 +164,11 @@ public class DefaultLayoutActivity extends AppCompatActivity {
 //        gimbalFineTuneWidget = findViewById(R.id.setting_menu_gimbal_fine_tune);
         mapWidget = findViewById(R.id.widget_map);
 
-//        initClickListener();
-//        MediaDataCenter.getInstance().getVideoStreamManager().addStreamSourcesListener(sources -> runOnUiThread(() -> updateFPVWidgetSource(sources)));
+        initClickListener();
+        MediaDataCenter.getInstance().getVideoStreamManager().addStreamSourcesListener(sources -> runOnUiThread(() -> updateFPVWidgetSource(sources)));
 //        primaryFpvWidget.setOnFPVStreamSourceListener((devicePosition, lensType) -> {
 //            cameraSourceProcessor.onNext(new CameraSource(devicePosition, lensType));
-//        });
+//        });  // 有问题报错
 //
         //小surfaceView放置在顶部，避免被大的遮挡
         secondaryFPVWidget.setSurfaceViewZOrderOnTop(true);
@@ -200,8 +200,8 @@ public class DefaultLayoutActivity extends AppCompatActivity {
 //    }
 
     private void initClickListener() {
-//        secondaryFPVWidget.setOnClickListener(v -> swapVideoSource());
-//        initChannelStateListener();
+        secondaryFPVWidget.setOnClickListener(v -> swapVideoSource());
+        initChannelStateListener();
 
 //        if (settingWidget != null) {
 //            settingWidget.setOnClickListener(v -> toggleRightDrawer());
@@ -322,28 +322,28 @@ public class DefaultLayoutActivity extends AppCompatActivity {
     }
 
     private void initChannelStateListener() {
-        IVideoChannel primaryChannel =
-                MediaDataCenter.getInstance().getVideoStreamManager().getAvailableVideoChannel(VideoChannelType.PRIMARY_STREAM_CHANNEL);
+//        IVideoChannel primaryChannel =
+//                MediaDataCenter.getInstance().getVideoStreamManager().getAvailableVideoChannel(VideoChannelType.PRIMARY_STREAM_CHANNEL);
         IVideoChannel secondaryChannel =
                 MediaDataCenter.getInstance().getVideoStreamManager().getAvailableVideoChannel(VideoChannelType.SECONDARY_STREAM_CHANNEL);
-        if (primaryChannel != null) {
-            primaryChannelStateListener = (from, to) -> {
-                StreamSource primaryStreamSource = primaryChannel.getStreamSource();
-                if (VideoChannelState.ON == to && primaryStreamSource != null) {
-                    runOnUiThread(() -> primaryFpvWidget.updateVideoSource(primaryStreamSource, VideoChannelType.PRIMARY_STREAM_CHANNEL));
-                }
-            };
-            primaryChannel.addVideoChannelStateChangeListener(primaryChannelStateListener);
-        }
-        if (secondaryChannel != null) {
-            secondaryChannelStateListener = (from, to) -> {
-                StreamSource secondaryStreamSource = secondaryChannel.getStreamSource();
-                if (VideoChannelState.ON == to && secondaryStreamSource != null) {
-                    runOnUiThread(() -> secondaryFPVWidget.updateVideoSource(secondaryStreamSource, VideoChannelType.SECONDARY_STREAM_CHANNEL));
-                }
-            };
-            secondaryChannel.addVideoChannelStateChangeListener(secondaryChannelStateListener);
-        }
+//        if (primaryChannel != null) {
+//            primaryChannelStateListener = (from, to) -> {
+//                StreamSource primaryStreamSource = primaryChannel.getStreamSource();
+//                if (VideoChannelState.ON == to && primaryStreamSource != null) {
+//                    runOnUiThread(() -> primaryFpvWidget.updateVideoSource(primaryStreamSource, VideoChannelType.PRIMARY_STREAM_CHANNEL));
+//                }
+//            };
+//            primaryChannel.addVideoChannelStateChangeListener(primaryChannelStateListener);
+//        }
+//        if (secondaryChannel != null) {
+//            secondaryChannelStateListener = (from, to) -> {
+//                StreamSource secondaryStreamSource = secondaryChannel.getStreamSource();
+//                if (VideoChannelState.ON == to && secondaryStreamSource != null) {
+//                    runOnUiThread(() -> secondaryFPVWidget.updateVideoSource(secondaryStreamSource, VideoChannelType.SECONDARY_STREAM_CHANNEL));
+//                }
+//            };
+//            secondaryChannel.addVideoChannelStateChangeListener(secondaryChannelStateListener);
+//        }
     }
 
 //    private void removeChannelStateListener() {
@@ -368,12 +368,12 @@ public class DefaultLayoutActivity extends AppCompatActivity {
         lastLensType = lensType;
         ComponentIndexType cameraIndex = CameraUtil.getCameraIndex(devicePosition);
         updateViewVisibility(devicePosition, lensType);
-//        updateInteractionEnabled();
-//        //如果无需使能或者显示的，也就没有必要切换了。
-//        if (fpvInteractionWidget.isInteractionEnabled()) {
-//            fpvInteractionWidget.updateCameraSource(cameraIndex, lensType);
-//            fpvInteractionWidget.updateGimbalIndex(CommonUtils.getGimbalIndex(devicePosition));
-//        }
+        updateInteractionEnabled();
+        //如果无需使能或者显示的，也就没有必要切换了。
+        if (fpvInteractionWidget.isInteractionEnabled()) {
+            fpvInteractionWidget.updateCameraSource(cameraIndex, lensType);
+            fpvInteractionWidget.updateGimbalIndex(CommonUtils.getGimbalIndex(devicePosition));
+        }
 ////        if (lensControlWidget.getVisibility() == View.VISIBLE) {
 ////            lensControlWidget.updateCameraSource(cameraIndex, lensType);
 ////        }
@@ -425,25 +425,25 @@ public class DefaultLayoutActivity extends AppCompatActivity {
 //    /**
 //     * Swap the video sources of the FPV and secondary FPV widgets.
 //     */
-//    private void swapVideoSource() {
-//        VideoChannelType primaryVideoChannel = primaryFpvWidget.getVideoChannelType();
-//        StreamSource primaryStreamSource = primaryFpvWidget.getStreamSource();
-//        VideoChannelType secondaryVideoChannel = secondaryFPVWidget.getVideoChannelType();
-//        StreamSource secondaryStreamSource = secondaryFPVWidget.getStreamSource();
-//        //两个source都存在的情况下才进行切换
-//        if (secondaryStreamSource != null && primaryStreamSource != null) {
-//            primaryFpvWidget.updateVideoSource(secondaryStreamSource, secondaryVideoChannel);
-//            secondaryFPVWidget.updateVideoSource(primaryStreamSource, primaryVideoChannel);
-//        }
-//    }
-//
-//    private void updateInteractionEnabled() {
-//        StreamSource newPrimaryStreamSource = primaryFpvWidget.getStreamSource();
-//        fpvInteractionWidget.setInteractionEnabled(false);
-//        if (newPrimaryStreamSource != null) {
-//            fpvInteractionWidget.setInteractionEnabled(newPrimaryStreamSource.getPhysicalDevicePosition() != PhysicalDevicePosition.NOSE);
-//        }
-//    }
+    private void swapVideoSource() {
+        VideoChannelType primaryVideoChannel = primaryFpvWidget.getVideoChannelType();
+        StreamSource primaryStreamSource = primaryFpvWidget.getStreamSource();
+        VideoChannelType secondaryVideoChannel = secondaryFPVWidget.getVideoChannelType();
+        StreamSource secondaryStreamSource = secondaryFPVWidget.getStreamSource();
+        //两个source都存在的情况下才进行切换
+        if (secondaryStreamSource != null && primaryStreamSource != null) {
+            primaryFpvWidget.updateVideoSource(secondaryStreamSource, secondaryVideoChannel);
+            secondaryFPVWidget.updateVideoSource(primaryStreamSource, primaryVideoChannel);
+        }
+    }
+
+    private void updateInteractionEnabled() {
+        StreamSource newPrimaryStreamSource = primaryFpvWidget.getStreamSource();
+        fpvInteractionWidget.setInteractionEnabled(false);
+        if (newPrimaryStreamSource != null) {
+            fpvInteractionWidget.setInteractionEnabled(newPrimaryStreamSource.getPhysicalDevicePosition() != PhysicalDevicePosition.NOSE);
+        }
+    }
 
     private static class CameraSource {
         PhysicalDevicePosition devicePosition;

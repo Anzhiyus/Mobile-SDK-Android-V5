@@ -45,6 +45,8 @@ public class PhotoProcessingWorker extends Worker {
     Context context = getApplicationContext(); // 获取 Context
     private static final String TAG = "OpencvpictureActivity";
     double smoothmean = 0;
+    private static double estimatedError1 = 1.0;
+    private static double estimatedError2 = 1.0;
 
     // 平滑权重，weights为最近赋予2权重表示弱化当前数据，赋予1表示强化之前的数据，目的是使当前数据和之前趋势一样
     // weights2则赋予当前数据最大权重1，为了体现当前数据的特征。
@@ -65,9 +67,9 @@ public class PhotoProcessingWorker extends Worker {
         SharedPreferences sharedPreferences = getApplicationContext().getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE);
         String tempDataPath2 = sharedPreferences.getString("tempDataPath2", "kong");
         double tempDataIdw = sharedPreferences.getFloat("tempDataIdw", 0.0f);
-        List<Double> idwData_Smooth1 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth1", "[]"));
-        List<Double> idwData_Smooth2 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth2", "[]"));
-        String bitmapPath1 = getInputData().getString("photo_path");
+//        List<Double> idwData_Smooth1 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth1", "[]"));
+//        List<Double> idwData_Smooth2 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth2", "[]"));
+        List<Double> idwData_KalmanFilter = jsonToDoubleList(sharedPreferences.getString("idwData_KalmanFilter", "[]"));
 
         // 获取传输数据
         String path1 = getInputData().getString("photo_path");
@@ -76,12 +78,14 @@ public class PhotoProcessingWorker extends Worker {
         double PixelDim = getInputData().getDouble("photo_pixeldim", 4.5/1000/1000);  // 米/像素
 
         Log.d(TAG, "photo_path: "+path1);
+        Log.d(TAG, "photo_path: "+tempDataPath2);
 
         // 检查列表是否为空
         if (tempDataPath2 == "kong") {
             Log.d(TAG, "The list is empty. Function completed: "+tempDataPath2);
             // 数据暂存缓存路径
-            tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
+//            tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
+            tempDataPath2 = saveImageToCacheDir(context,path1,path1.substring(path1.lastIndexOf("/") + 1));
             // 更新并保存共享数据
             SharedPreferences.Editor editor = sharedPreferences.edit();
             editor.putString("tempDataPath2", tempDataPath2);
@@ -91,7 +95,7 @@ public class PhotoProcessingWorker extends Worker {
             System.out.println("The list is empty. Function completed.");
             // 返回结果
             Data outputData = new Data.Builder()
-                    .putDouble("result_value", 0)
+                    .putDouble("result_value", 0.01)
                     .build();
             return Result.success(outputData);
         }
@@ -114,33 +118,37 @@ public class PhotoProcessingWorker extends Worker {
         Log.d(TAG, "img1Bitmap分辨率宽: "+img1Bitmap.getWidth());
         Log.d(TAG, "img2Bitmap分辨率高: "+img2Bitmap.getHeight());
         double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
-        Log.d(TAG, "idw: "+idw);
+        Log.d(TAG, "idw: "+Math.round(idw * 10) / 10.0 );
         // 数据暂存缓存路径
-        tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
+//        tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
+        tempDataPath2 = saveImageToCacheDir(context,path1,path1.substring(path1.lastIndexOf("/") + 1));
 
         // 结果为0时改为上一个计算的数值
         if(idw == 0)
             idw = tempDataIdw;
         tempDataIdw = idw;
 
-        // 第一次加权平滑结果
-        calculateWeightSmooth(idwData_Smooth1, idw, 10,weights);
-        // 第二次加权平滑结果
-        smoothmean = calculateWeightSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
+//        // 第一次加权平滑结果
+//        calculateWeightSmooth(idwData_Smooth1, idw, 10,weights);
+//        // 第二次加权平滑结果
+//        smoothmean = calculateWeightSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
+//        Log.d(TAG, "smoothmean: "+Math.round(smoothmean * 10) / 10.0 );
 
-        Log.d(TAG, "smoothmean: "+smoothmean);
+        // 卡尔曼滤波
+        Log.d(TAG, "KalmanFilter: "+applyKalmanFilter(idwData_KalmanFilter, idw));
 
         // 更新并保存共享数据
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString("tempDataPath2", tempDataPath2);
         editor.putFloat("tempDataIdw", (float) tempDataIdw);
-        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
-        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
+//        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
+//        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
+        editor.putString("idwData_KalmanFilter", doubleListToJson(idwData_KalmanFilter));
         editor.apply();
 
         // 返回结果
         Data outputData = new Data.Builder()
-                .putDouble("result_value", smoothmean)
+                .putDouble("result_value", idwData_KalmanFilter.get(idwData_KalmanFilter.size() - 1))
                 .build();
         return Result.success(outputData);
     }
@@ -287,7 +295,8 @@ public class PhotoProcessingWorker extends Worker {
         // 根据行高 AviationHigh 和坐标 AviationHighPoints 进行反距离加权
         double idw = calculateWeight(AviationHigh, AviationHighPoints);
         double weightedAviationHighGS = calculateWeightGS(AviationHigh, AviationHighPoints, boundaryPoint, img2.cols()/3);
-        Log.d(TAG, "GS距离加权: "+weightedAviationHighGS);
+        Log.d(TAG, "GS距离加权: "+ Math.round(weightedAviationHighGS * 10) / 10.0);
+        Log.d(TAG, "GS距离加权: "+ AviationHigh.toString());
         return idw;
     }
 
@@ -341,7 +350,7 @@ public class PhotoProcessingWorker extends Worker {
         if (weightSum == 0.0) {
             throw new ArithmeticException("Cannot divide by zero. All point distances are zero.");
         }
-        return weightedSum / weightSum;
+        return Math.round( weightedSum / weightSum * 10) / 10.0;
     }
 
     /** 滑动窗口反距离加权平均算法你
@@ -392,11 +401,11 @@ public class PhotoProcessingWorker extends Worker {
 
         // 初始化第一次滤波的状态估计和误差协方差
         double estimatedValue1 = existingData.get(existingData.size() - 1);
-        double estimatedError1 = 1.0;
+//        double estimatedError1 = 1.0;
 
         // 初始化第二次滤波的状态估计和误差协方差
         double estimatedValue2 = existingData.get(existingData.size() - 1);
-        double estimatedError2 = 1.0;
+//        double estimatedError2 = 1.0;
 
         // 第一次滤波 - 预测阶段
         double predictedValue1 = estimatedValue1;
@@ -416,8 +425,10 @@ public class PhotoProcessingWorker extends Worker {
         estimatedValue2 = predictedValue2 + kalmanGain2 * (estimatedValue1 - predictedValue2);
         estimatedError2 = (1 - kalmanGain2) * predictedError2;
 
+        Log.d(TAG, "estimatedError2: "+estimatedError2);
+
         // 将二次滤波的结果添加到数据列表中
-        existingData.add(estimatedValue2);
+        existingData.add(Math.round(estimatedValue2 * 10) / 10.0 );
         return existingData;
     }
 

@@ -53,15 +53,15 @@
                 app:uxsdk_cameraSideTextSize="14dp"
                 app:uxsdk_videoChannelType="primaryStreamChannel">
 
-<!--                <dji.v5.ux.cameracore.widget.fpvinteraction.FPVInteractionWidget-->
-<!--                    android:id="@+id/widget_fpv_interaction"-->
-<!--                    android:layout_width="0dp"-->
-<!--                    android:layout_height="0dp"-->
-<!--                    app:layout_constraintBottom_toBottomOf="parent"-->
-<!--                    app:layout_constraintEnd_toEndOf="parent"-->
-<!--                    app:layout_constraintHeight_percent="0.80"-->
-<!--                    app:layout_constraintHorizontal_bias="1.0"-->
-<!--                    app:layout_constraintStart_toStartOf="parent">-->
+                <dji.v5.ux.cameracore.widget.fpvinteraction.FPVInteractionWidget
+                    android:id="@+id/widget_fpv_interaction"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintHeight_percent="0.80"
+                    app:layout_constraintHorizontal_bias="1.0"
+                    app:layout_constraintStart_toStartOf="parent">
 
 <!--                    <dji.v5.ux.core.panel.systemstatus.SystemStatusListPanelWidget-->
 <!--                        android:id="@+id/widget_panel_system_status_list"-->
@@ -77,7 +77,7 @@
 <!--                        android:visibility="invisible"-->
 <!--                        app:layout_constraintWidth_percent="0.95"-->
 <!--                        app:uxsdk_titleBarBackgroundColor="@color/uxsdk_black" />-->
-<!--                </dji.v5.ux.cameracore.widget.fpvinteraction.FPVInteractionWidget>-->
+                </dji.v5.ux.cameracore.widget.fpvinteraction.FPVInteractionWidget>
             </dji.v5.ux.core.widget.fpv.FPVWidget>
 
             <dji.v5.ux.core.widget.fpv.FPVWidget

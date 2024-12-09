@@ -8,6 +8,8 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mapbox.mapboxsdk.Mapbox.getApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.opencv.android.Utils
 import org.opencv.core.DMatch
 import org.opencv.core.Mat
@@ -29,10 +31,14 @@ class PhotoProcessing {
         private const val TAG = "OpencvpictureActivity"
         var smoothmean = 0.0
 
-        // 平滑权重，weights为最近赋予2权重表示弱化当前数据，赋予1表示强化之前的数据，目的是使当前数据和之前趋势一样
-        // weights2则赋予当前数据最大权重1，为了体现当前数据的特征。
-        var weights = doubleArrayOf(2.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
-        var weights2 = doubleArrayOf(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
+        // 卡尔曼滤波初始化误差参数
+        var estimatedError1 = 1.0
+        var estimatedError2 = 1.0
+
+//        // 平滑权重，weights为最近赋予2权重表示弱化当前数据，赋予1表示强化之前的数据，目的是使当前数据和之前趋势一样
+//        // weights2则赋予当前数据最大权重1，为了体现当前数据的特征。
+//        var weights = doubleArrayOf(2.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
+//        var weights2 = doubleArrayOf(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
 
         private const val SHARED_PREFS_NAME = "WorkerData"
         private val gson = Gson()
@@ -50,11 +56,14 @@ class PhotoProcessing {
             )
             var tempDataPath2 = sharedPreferences.getString("tempDataPath2", "kong")
             var tempDataIdw = sharedPreferences.getFloat("tempDataIdw", 0.0f).toDouble()
-            val idwData_Smooth1: MutableList<Double> =
-                jsonToDoubleList(sharedPreferences.getString("idwData_Smooth1", "[]") ?: "[]")
-                    ?.filterNotNull()?.toMutableList() ?: mutableListOf()
-            val idwData_Smooth2: MutableList<Double> =
-                jsonToDoubleList(sharedPreferences.getString("idwData_Smooth2", "[]") ?: "[]")
+//            val idwData_Smooth1: MutableList<Double> =
+//                jsonToDoubleList(sharedPreferences.getString("idwData_Smooth1", "[]") ?: "[]")
+//                    ?.filterNotNull()?.toMutableList() ?: mutableListOf()
+//            val idwData_Smooth2: MutableList<Double> =
+//                jsonToDoubleList(sharedPreferences.getString("idwData_Smooth2", "[]") ?: "[]")
+//                    ?.filterNotNull()?.toMutableList() ?: mutableListOf()
+            val idwData_KalmanFilter: MutableList<Double> =
+                jsonToDoubleList(sharedPreferences.getString("idwData_KalmanFilter", "[]") ?: "[]")
                     ?.filterNotNull()?.toMutableList() ?: mutableListOf()
 
             Log.d(TAG, "photo_path: $path1")
@@ -64,7 +73,9 @@ class PhotoProcessing {
             if (tempDataPath2 === "kong") {
                 Log.d(TAG,"The list is empty. Function completed: $tempDataPath2")
                 // 数据暂存缓存路径
-                tempDataPath2 = saveImageToCacheDir(context, path1, "DroneFlyTemp")
+                // tempDataPath2 = saveImageToCacheDir(context, path1, "DroneFlyTemp")
+                tempDataPath2 =
+                    saveImageToCacheDir(context, path1, path1.substring(path1.lastIndexOf("/") + 1))
                 // 更新并保存共享数据
                 val editor = sharedPreferences.edit()
                 editor.putString("tempDataPath2", tempDataPath2)
@@ -96,7 +107,9 @@ class PhotoProcessing {
             var idw: Double = processImageORB(img1Bitmap!!, img2Bitmap!!, focalLength, baseLine, pixelDim)
             // 数据暂存缓存路径
             // 数据暂存缓存路径
-            tempDataPath2 = saveImageToCacheDir(context, path1, "DroneFlyTemp")
+            // tempDataPath2 = saveImageToCacheDir(context, path1, "DroneFlyTemp")
+            tempDataPath2 =
+                saveImageToCacheDir(context, path1, path1.substring(path1.lastIndexOf("/") + 1))
 
             // 结果为0时改为上一个计算的数值
 
@@ -104,30 +117,90 @@ class PhotoProcessing {
             if (idw == 0.0) idw = tempDataIdw
             tempDataIdw = idw
 
-            // 第一次加权平滑结果
 
-            // 第一次加权平滑结果
-            calculateIDWSmooth(idwData_Smooth1, idw, 10, weights)
-            // 第二次加权平滑结果
-            // 第二次加权平滑结果
-            smoothmean = calculateIDWSmooth(
-                idwData_Smooth2,
-                idwData_Smooth1[idwData_Smooth1.size - 1], 10, weights2
+
+//            // 第一次加权平滑结果
+//            calculateIDWSmooth(idwData_Smooth1, idw, 10, weights)
+//            // 第二次加权平滑结果
+//            // 第二次加权平滑结果
+//            smoothmean = calculateIDWSmooth(
+//                idwData_Smooth2,
+//                idwData_Smooth1[idwData_Smooth1.size - 1], 10, weights2
+//            )
+//            Log.d(TAG, "smoothmean: $smoothmean")
+
+
+
+            // 卡尔曼滤波
+            Log.d(
+                PhotoProcessing.TAG,
+                "KalmanFilter: " + PhotoProcessing.applyKalmanFilter(
+                    idwData_KalmanFilter,
+                    idw
+                )
             )
-
-            Log.d(TAG, "smoothmean: $smoothmean")
-
             // 更新并保存共享数据
 
             // 更新并保存共享数据
             val editor = sharedPreferences.edit()
             editor.putString("tempDataPath2", tempDataPath2)
             editor.putFloat("tempDataIdw", tempDataIdw.toFloat())
-            editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1))
-            editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2))
+//            editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1))
+//            editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2))
+            editor.putString("idwData_KalmanFilter", doubleListToJson(idwData_KalmanFilter))
             editor.apply()
 
-            return smoothmean// 返回结果
+            return idwData_KalmanFilter.last()// 返回结果
+        }
+
+        // 重载方法，使用默认参数
+        fun applyKalmanFilter(existingData: MutableList<Double>, newData: Double): List<Double>? {
+            return applyKalmanFilter(existingData, newData, 0.05, 0.5, 0.05, 0.5)
+        }
+
+        fun applyKalmanFilter(
+            existingData: MutableList<Double>, newData: Double,
+            processNoise1: Double, measurementNoise1: Double,
+            processNoise2: Double, measurementNoise2: Double
+        ): List<Double>? {
+            // processNoise1越小越平滑，measurementNoise1相反，并且两者作用好像类似即只需要调一个参数即可
+            // 如果已有数据为空，初始化第一个数据点
+            if (existingData.isEmpty()) {
+                existingData.add(newData)
+                return existingData
+            }
+
+            // 初始化第一次滤波的状态估计和误差协方差
+            var estimatedValue1 = existingData[existingData.size - 1]
+
+            // 初始化第二次滤波的状态估计和误差协方差
+            var estimatedValue2 = existingData[existingData.size - 1]
+
+            // 第一次滤波 - 预测阶段
+            val predictedValue1 = estimatedValue1
+            val predictedError1 = PhotoProcessing.estimatedError1 + processNoise1
+
+            // 第一次滤波 - 更新阶段
+            val kalmanGain1 = predictedError1 / (predictedError1 + measurementNoise1)
+            estimatedValue1 = predictedValue1 + kalmanGain1 * (newData - predictedValue1)
+            PhotoProcessing.estimatedError1 = (1 - kalmanGain1) * predictedError1
+
+            // 第二次滤波 - 预测阶段
+            val predictedValue2 = estimatedValue2
+            val predictedError2 = PhotoProcessing.estimatedError2 + processNoise2
+
+            // 第二次滤波 - 更新阶段
+            val kalmanGain2 = predictedError2 / (predictedError2 + measurementNoise2)
+            estimatedValue2 = predictedValue2 + kalmanGain2 * (estimatedValue1 - predictedValue2)
+            PhotoProcessing.estimatedError2 = (1 - kalmanGain2) * predictedError2
+            Log.d(
+                PhotoProcessing.TAG,
+                "estimatedError2: " + PhotoProcessing.estimatedError2
+            )
+
+            // 将二次滤波的结果添加到数据列表中
+            existingData.add(Math.round(estimatedValue2 * 10) / 10.0)
+            return existingData
         }
 
         private fun jsonToDoubleList(json: String): List<Double?>? {

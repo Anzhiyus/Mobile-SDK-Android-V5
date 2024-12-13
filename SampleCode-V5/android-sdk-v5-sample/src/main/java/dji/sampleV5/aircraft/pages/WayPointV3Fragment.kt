@@ -2,6 +2,7 @@ package dji.sampleV5.aircraft.pages
 
 
 import android.annotation.SuppressLint
+import android.app.Activity.RESULT_OK
 import android.app.AlertDialog
 import android.content.Context
 import android.content.DialogInterface
@@ -26,6 +27,7 @@ import androidx.annotation.IntDef
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.work.*
+import com.amap.api.maps.model.LatLng
 import com.dji.industry.mission.DocumentsUtils
 import com.dji.wpmzsdk.common.data.HeightMode
 import com.dji.wpmzsdk.common.data.Template
@@ -33,7 +35,9 @@ import com.dji.wpmzsdk.common.utils.kml.model.WaypointActionType
 import com.dji.wpmzsdk.manager.WPMZManager
 import dji.sampleV5.aircraft.PhotoProcessingWorker
 import dji.sampleV5.aircraft.R
+import dji.sampleV5.aircraft.models.BasicAircraftControlVM
 import dji.sampleV5.aircraft.models.MediaVM
+import dji.sampleV5.aircraft.models.SimulatorVM
 import dji.sampleV5.aircraft.models.VirtualStickVM
 import dji.sampleV5.aircraft.models.WayPointV3VM
 import dji.sampleV5.aircraft.util.DialogUtil
@@ -43,16 +47,18 @@ import dji.sampleV5.aircraft.utils.KMZTestUtil.createWaylineMission
 import dji.sampleV5.aircraft.utils.wpml.WaypointInfoModel
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.value.common.EmptyMsg
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
+import dji.sdk.keyvalue.value.flightcontroller.FlightCoordinateSystem
+import dji.sdk.keyvalue.value.flightcontroller.RollPitchControlMode
+import dji.sdk.keyvalue.value.flightcontroller.VerticalControlMode
+import dji.sdk.keyvalue.value.flightcontroller.VirtualStickFlightControlParam
+import dji.sdk.keyvalue.value.flightcontroller.YawControlMode
 import dji.sdk.wpmz.jni.JNIWPMZManager
 import dji.sdk.wpmz.value.mission.*
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.common.utils.GpsUtils
-import dji.v5.common.video.channel.VideoChannelState
-import dji.v5.common.video.channel.VideoChannelType
-import dji.v5.common.video.interfaces.IVideoChannel
-import dji.v5.common.video.interfaces.VideoChannelStateChangeListener
 import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.simulator.SimulatorManager
 import dji.v5.manager.aircraft.waypoint3.WPMZParserManager
@@ -63,11 +69,9 @@ import dji.v5.manager.aircraft.waypoint3.model.BreakPointInfo
 import dji.v5.manager.aircraft.waypoint3.model.RecoverActionType
 import dji.v5.manager.aircraft.waypoint3.model.WaylineExecutingInfo
 import dji.v5.manager.aircraft.waypoint3.model.WaypointMissionExecuteState
-import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.datacenter.media.MediaFile
 import dji.v5.utils.common.*
 import dji.v5.utils.common.DeviceInfoUtil.getPackageName
-import dji.v5.utils.common.ThreadUtil.runOnUiThread
 import dji.v5.ux.accessory.DescSpinnerCell
 import dji.v5.ux.map.MapWidget
 import dji.v5.ux.mapkit.core.maps.DJIMap
@@ -82,9 +86,14 @@ import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.Disposable
 import io.reactivex.rxjava3.schedulers.Schedulers
 import kotlinx.android.synthetic.main.dialog_add_waypoint.view.*
+import kotlinx.android.synthetic.main.frag_virtual_stick_page.simulator_state_info_tv
+import kotlinx.android.synthetic.main.frag_virtual_stick_page.widget_horizontal_situation_indicator
 import kotlinx.android.synthetic.main.frag_waypointv3_page.*
 import kotlinx.android.synthetic.main.view_mission_setting_home.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.opencv.android.BaseLoaderCallback
@@ -95,12 +104,21 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
 import java.io.IOException
+import java.io.InputStream
+import java.io.InputStreamReader
 import java.util.*
 import java.util.regex.Pattern
-import javax.xml.transform.stream.StreamSource
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
+import kotlinx.coroutines.*
+import kotlinx.coroutines.NonCancellable.isActive
 
 /**
  * @author feel.feng
@@ -120,6 +138,7 @@ class WayPointV3Fragment : DJIFragment() {
     private val OPEN_FILE_CHOOSER = 0
     private val OPEN_DOCUMENT_TREE = 1
     private val OPEN_MANAGE_EXTERNAL_STORAGE  = 2
+    private val REQUEST_CODE_IMPORT_KML  = 3 // 处理文件选择结果
 
 
 
@@ -132,15 +151,27 @@ class WayPointV3Fragment : DJIFragment() {
     var selectWaylines: ArrayList<Int> = ArrayList()
 
     private val mediaVM: MediaVM by activityViewModels()
-    private val virtualStickVM: VirtualStickVM by activityViewModels()
-
     private val TAG = "OpencvpictureActivity"
     private val SHARED_PREFS_NAME = "WorkerData"
 
     var i = 0
-
     var pictureArray: Array<String> = arrayOf()
 
+    // 虚拟摇杆
+    private val basicAircraftControlVM: BasicAircraftControlVM by activityViewModels()
+    private val virtualStickVM: VirtualStickVM by activityViewModels()
+    private val simulatorVM: SimulatorVM by activityViewModels()
+    private val deviation: Double = 0.02
+
+    var routePoints: List<LatLng> = mutableListOf()
+    // 声明全局变量，用来存储无人机当前位置
+    var droneCurrentLocation: LatLng? = null
+    // 全局变量：地球半径（单位：米）
+    val EARTH_RADIUS = 6371e3
+    // 当前航点索引（持久化变量，可存储在文件、数据库或 SharedPreferences 中）
+    var currentIndex: Int = 1
+    // 全局变量：默认方位角
+    var droneCurrentAzimuth: Double = 0.0
 
     // 判断OpenCV是否加载成功
     private val loaderCallback: BaseLoaderCallback = object : BaseLoaderCallback(context) {
@@ -163,6 +194,41 @@ class WayPointV3Fragment : DJIFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // 虚拟摇杆
+        widget_horizontal_situation_indicator.setSimpleModeEnable(true)
+        initBtnClickListener()
+        // 摇杆监听
+//        initStickListener()
+        virtualStickVM.listenRCStick()
+        simulatorVM.simulatorStateSb.observe(viewLifecycleOwner) {
+            // 提取纬度和经度的正则表达式
+            val latitudeRegex = "Latitude : ([\\d.-]+)".toRegex()
+            val longitudeRegex = "Longitude : ([\\d.-]+)".toRegex()
+
+            // 从字符串中查找匹配
+            val latitudeMatch = latitudeRegex.find(it)
+            val longitudeMatch = longitudeRegex.find(it)
+
+            if (latitudeMatch != null && longitudeMatch != null) {
+                val latitude = latitudeMatch.groupValues[1].toDouble()
+                val longitude = longitudeMatch.groupValues[1].toDouble()
+
+                // 更新全局变量
+                droneCurrentLocation = LatLng(latitude, longitude)
+
+                println("Updated drone location: $droneCurrentLocation")
+            } else {
+                println("Failed to extract Latitude and Longitude")
+            }
+
+            simulator_state_info_tv.text = it
+        }
+
+        //  读取数据 在应用启动时，读取保存的状态：
+        val sharedPreferences = requireContext().getSharedPreferences("AppData", Context.MODE_PRIVATE)
+        currentIndex = sharedPreferences.getInt("currentIndex", 1) // 默认从0开始
+
 
 
 
@@ -195,6 +261,36 @@ class WayPointV3Fragment : DJIFragment() {
         i = 0
 
     }
+
+    private fun initBtnClickListener() {
+        // 开启虚拟摇杆
+        virtualStickVM.enableVirtualStick(object : CommonCallbacks.CompletionCallback {
+            override fun onSuccess() {
+                ToastUtils.showToast("enableVirtualStick success.")
+            }
+
+            override fun onFailure(error: IDJIError) {
+                ToastUtils.showToast("enableVirtualStick error,$error")
+            }
+        })
+
+        // 开启虚拟摇杆高级模式
+        virtualStickVM.enableVirtualStickAdvancedMode()
+
+        // 起飞
+        basicAircraftControlVM.startTakeOff(object :
+            CommonCallbacks.CompletionCallbackWithParam<EmptyMsg> {
+            override fun onSuccess(t: EmptyMsg?) {
+                ToastUtils.showToast("start takeOff onSuccess.")
+            }
+
+            override fun onFailure(error: IDJIError) {
+                ToastUtils.showToast("start takeOff onFailure,$error")
+            }
+        })
+    }
+
+
 
     private fun switchViews(mainWindow: FrameLayout, thumbnailWindow1: FrameLayout, thumbnailWindow2: FrameLayout, isLeftThumbnail: Boolean) {
         val view1 = mainWindow.getChildAt(0)
@@ -337,25 +433,30 @@ class WayPointV3Fragment : DJIFragment() {
         sp_map_switch.setSelection(wayPointV3VM.getMapType(context))
 
         btn_mission_stop.setOnClickListener {
-            if (curMissionExecuteState == WaypointMissionExecuteState.READY) {
-                ToastUtils.showToast("Mission not start")
-                return@setOnClickListener
-            }
-            if (TextUtils.isEmpty(curMissionPath)){
-                ToastUtils.showToast("curMissionPath is Empty")
-                return@setOnClickListener
-            }
-            wayPointV3VM.stopMission(
-                FileUtils.getFileName(curMissionPath, WAYPOINT_FILE_TAG),
-                object : CommonCallbacks.CompletionCallback {
-                    override fun onSuccess() {
-                        ToastUtils.showToast("stopMission Success")
-                    }
+//            if (curMissionExecuteState == WaypointMissionExecuteState.READY) {
+//                ToastUtils.showToast("Mission not start")
+//                return@setOnClickListener
+//            }
+//            if (TextUtils.isEmpty(curMissionPath)){
+//                ToastUtils.showToast("curMissionPath is Empty")
+//                return@setOnClickListener
+//            }
+//            wayPointV3VM.stopMission(
+//                FileUtils.getFileName(curMissionPath, WAYPOINT_FILE_TAG),
+//                object : CommonCallbacks.CompletionCallback {
+//                    override fun onSuccess() {
+//                        ToastUtils.showToast("stopMission Success")
+//                    }
+//
+//                    override fun onFailure(error: IDJIError) {
+//                        ToastUtils.showToast("stopMission Failed " + getErroMsg(error))
+//                    }
+//                })
 
-                    override fun onFailure(error: IDJIError) {
-                        ToastUtils.showToast("stopMission Failed " + getErroMsg(error))
-                    }
-                })
+                        // 取消当前任务
+            currentTaskJob?.cancel()
+            currentTaskJob = null
+            Log.d("Task", "当前任务已取消")
         }
         btn_editKmz.setOnClickListener {
             showEditDialog()
@@ -370,8 +471,6 @@ class WayPointV3Fragment : DJIFragment() {
         kmz_save.setOnClickListener {
             saveKmz(true)
         }
-
-
 
         btn_breakpoint_resume.setOnClickListener{
             var missionName = FileUtils.getFileName(curMissionPath , WAYPOINT_FILE_TAG );
@@ -411,10 +510,38 @@ class WayPointV3Fragment : DJIFragment() {
 
 //        // 读取视频流中的数据：
 
+        // 按钮点击事件：启动任务
         btn_download_photo_spf.setOnClickListener {
-            enqueueTask {
-                performTask()
+            // 如果已有任务正在运行，先取消
+            currentTaskJob?.cancel()
+
+            // 启动新的任务
+            currentTaskJob = lifecycleScope.launch {
+                enqueueTask {
+                    performTask()
+                }
             }
+        }
+
+//        // 按钮点击事件：取消任务
+//        btn_cancel_task.setOnClickListener {
+//            // 取消当前任务
+//            currentTaskJob?.cancel()
+//            currentTaskJob = null
+//            Log.d("Task", "当前任务已取消")
+//        }
+
+        // 导入kml
+        btn_dinput_kml_spf.setOnClickListener {
+            // 导入kml，则需要把上次任务记录的索引清空
+            currentIndex=1
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "application/vnd.google-earth.kml+xml" // 过滤 KML 文件类型
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }
+
+            // 启动文件选择器
+            startActivityForResult(intent, REQUEST_CODE_IMPORT_KML)
         }
 
 //        btn_download_photo_spf.setOnClickListener {
@@ -430,8 +557,6 @@ class WayPointV3Fragment : DJIFragment() {
 //                }
 //            }
 //        }
-
-
 
 
 //        // 读取本地文件夹中的数据：
@@ -457,6 +582,8 @@ class WayPointV3Fragment : DJIFragment() {
 //        }
     }
 
+    // 定义一个全局的 Job，用于控制任务取消
+    private var currentTaskJob: Job? = null
     // 定义一个任务队列（Channel）
     private val taskQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     // 初始化消费者协程
@@ -465,6 +592,8 @@ class WayPointV3Fragment : DJIFragment() {
             for (task in taskQueue) {
                 try {
                     task() // 按顺序执行队列中的任务
+                } catch (e: CancellationException) {
+                    Log.e("TaskQueue", "任务被取消")
                 } catch (e: Exception) {
                     Log.e("TaskQueue", "任务执行失败: ${e.message}")
                 }
@@ -479,19 +608,228 @@ class WayPointV3Fragment : DJIFragment() {
     }
     // 任务函数逻辑
     suspend fun performTask() {
-        val path = downloadPhotoFixedPath()
-        Log.d("TaskQueue", "path: $path")
-        if (path != null) {
-            val resultValue = downloadPhotoSuspend(
-                path,
-                27.7,
-                0.01229,
-                3.3 / 1000 / 1000,
-                requireContext()
-            )
-            Log.d("TaskQueue", "DJI回调返回的结果: $resultValue")
-        } else {
-            Log.d("TaskQueue", "DJI回调返回的结果: 下载失败，无法获取路径")
+
+        if (routePoints.isEmpty()) {
+            println("航线点为空，无法执行任务。")
+            return
+        }
+
+        while (currentIndex < routePoints.size) {
+            Log.d(TAG, "downloadPhotoFixedPath: start：$currentIndex")
+            val start: LatLng
+            val end: LatLng
+
+            if (currentIndex == 0) {
+                // 第一次运行，将无人机当前位置作为起点
+                val currentLocation = droneCurrentLocation
+                if (currentLocation == null) {
+                    println("无人机当前位置未知，无法执行任务。")
+                    return
+                }
+                start = currentLocation
+                end = routePoints[currentIndex]
+            } else {
+                // 后续运行，从当前索引点到下一个点
+                start = routePoints[currentIndex - 1]
+                end = routePoints[currentIndex]
+            }
+
+            // 计算两点之间的距离和方位角
+            var distance = calculateDistance(start, end)*100/100
+            distance = (distance* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
+            var azimuth = calculateBearing(start, end)
+            azimuth = (azimuth* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
+            var radians = Math.toRadians(azimuth)
+            // 计算速度分量 B 和 C
+            var northSpeed = cos(radians) * 5 // 南北速度分量
+            northSpeed = (northSpeed* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
+            var eastSpeed = sin(radians) * 5 // 东西速度分量
+            eastSpeed = (eastSpeed* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
+            // 计算飞行时间
+            val time = (distance / 5).toInt() // 将飞行时间转换为 Int
+
+            // 判断 azimuth 与 globalAzimuth 的差值是否小于 1
+            if (abs(azimuth - droneCurrentAzimuth) < 1) {
+                // 差值小于 1，直接运行一次
+                // 发送虚拟杆参数
+                sendVirtualStickParameters(time, northSpeed,eastSpeed,azimuth,
+                    sendAction = { param ->
+                        virtualStickVM.sendVirtualStickAdvancedParam(param)
+                    }
+                )
+            } else {
+                // 差值大于等于 1，更新 globalAzimuth，并运行两次
+                droneCurrentAzimuth = azimuth
+                // 发送虚拟杆参数，修改方位
+                sendVirtualStickParameters(1, 0.0,0.0,azimuth,
+                    sendAction = { param ->
+                        virtualStickVM.sendVirtualStickAdvancedParam(param)
+                    }
+                )
+                // 发送虚拟杆参数
+                sendVirtualStickParameters(time, northSpeed,eastSpeed,azimuth,
+                    sendAction = { param ->
+                        virtualStickVM.sendVirtualStickAdvancedParam(param)
+                    }
+                )
+            }
+
+            // 更新当前索引，保存持久化状态
+            currentIndex++
+
+            // 保存数据 在应用退出或暂停时，保存循环状态：
+            val sharedPreferences = requireContext().getSharedPreferences("AppData", Context.MODE_PRIVATE)
+            val editor = sharedPreferences.edit()
+            editor.putInt("currentIndex", currentIndex) // 保存循环的当前索引
+            editor.apply()
+            Log.d(TAG, "downloadPhotoFixedPath: end：$currentIndex")
+
+            if (!isActive) {
+                // 协程已取消，退出循环
+                Log.d("Task", "任务已取消，停止执行")
+                break
+            }
+        }
+        Log.d(TAG, "所有航线点已完成飞行任务")
+        println("所有航线点已完成飞行任务！")
+
+
+//        Log.d(TAG, "sendVirtualStickParameters: picth")
+//        sendVirtualStickParameters(5, 5.0,0.0,0.0,
+//            sendAction = { param ->
+//                virtualStickVM.sendVirtualStickAdvancedParam(param)
+//            }
+//        )
+//
+//        Log.d(TAG, "sendVirtualStickParameters: picth2")
+//        sendVirtualStickParameters(5, 5.0,0.0,45.0,
+//            sendAction = { param ->
+//                virtualStickVM.sendVirtualStickAdvancedParam(param)
+//            }
+//        )
+//
+//        Log.d(TAG, "sendVirtualStickParameters: picth3")
+//        sendVirtualStickParameters(5, 5.0,0.0,-45.0,
+//            sendAction = { param ->
+//                virtualStickVM.sendVirtualStickAdvancedParam(param)
+//            }
+//        )
+//
+//        Log.d(TAG, "sendVirtualStickParameters: picth4")
+//        sendVirtualStickParameters(5, 5.0,5.0,0.0,
+//            sendAction = { param ->
+//                virtualStickVM.sendVirtualStickAdvancedParam(param)
+//            }
+//        )
+//        Log.d(TAG,  "sendVirtualStickParameters: roll")
+//        sendVirtualStickParameters(5, 0.0,5.0,
+//            sendAction = { param ->
+//                virtualStickVM.sendVirtualStickAdvancedParam(param)
+//            }
+//        )
+//        Log.d(TAG,  "sendVirtualStickParameters: picthroll")
+//        sendVirtualStickParameters(5, 5.0,5.0,
+//            sendAction = { param ->
+//                virtualStickVM.sendVirtualStickAdvancedParam(param)
+//            }
+//        )
+//
+//        Log.d(TAG, "downloadPhotoFixedPath: start")
+//        val path = try {
+//            downloadPhotoFixedPath()
+//        } catch (e: Exception) {
+//            Log.e(TAG, "Download failed: ${e.message}")
+//            null
+//        }
+//        Log.d(TAG, "downloadPhotoFixedPath: end")
+//
+//        Log.d("TaskQueue", "path: $path")
+//        if (path != null) {
+//            val resultValue = downloadPhotoSuspend(
+//                path,
+//                27.7,
+//                0.01229,
+//                3.3 / 1000 / 1000,
+//                requireContext()
+//            )
+//            Log.d("TaskQueue", "DJI回调返回的结果: $resultValue")
+//        } else {
+//            Log.d("TaskQueue", "DJI回调返回的结果: 下载失败，无法获取路径")
+//        }
+//
+//
+//        Log.d(TAG, "sendVirtualStickParameters: picth2")
+//        sendVirtualStickParameters(5, 5.0,5.0,
+//            sendAction = { param ->
+//                virtualStickVM.sendVirtualStickAdvancedParam(param)
+//            }
+//        )
+    }
+
+
+
+    // 计算两点之间的距离（单位：米）
+    fun calculateDistance(start: LatLng, end: LatLng): Double {
+        val startLat = Math.toRadians(start.latitude)
+        val startLng = Math.toRadians(start.longitude)
+        val endLat = Math.toRadians(end.latitude)
+        val endLng = Math.toRadians(end.longitude)
+
+        val dLat = endLat - startLat
+        val dLng = endLng - startLng
+
+        val a = sin(dLat / 2).pow(2) + cos(startLat) * cos(endLat) * sin(dLng / 2).pow(2)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return EARTH_RADIUS * c
+    }
+
+    // 计算两点之间的方位角（相对于正北方向的顺时针角度，单位：度）
+    fun calculateBearing(start: LatLng, end: LatLng): Double {
+        val startLat = Math.toRadians(start.latitude)
+        val startLng = Math.toRadians(start.longitude)
+        val endLat = Math.toRadians(end.latitude)
+        val endLng = Math.toRadians(end.longitude)
+
+        val dLng = endLng - startLng
+        val y = sin(dLng) * cos(endLat)
+        val x = cos(startLat) * sin(endLat) - sin(startLat) * cos(endLat) * cos(dLng)
+        return (Math.toDegrees(atan2(y, x)) + 360) % 360 // 确保方位角为 0~360 度
+    }
+
+    // 保存当前索引到持久化存储（模拟）
+    fun saveCurrentIndex(index: Int) {
+        // 实际项目中可以保存到文件、数据库或 SharedPreferences 中
+        println("当前索引已保存: $index")
+    }
+
+
+
+    suspend fun sendVirtualStickParameters(
+        durationInSeconds: Int = 1,
+        pitch: Double = 0.0,
+        roll: Double = 0.0,
+        yaw: Double = 0.0,
+        verticalThrottle: Double = 0.0,
+        verticalControlMode: VerticalControlMode = VerticalControlMode.VELOCITY,
+        rollPitchControlMode: RollPitchControlMode = RollPitchControlMode.VELOCITY,
+        yawControlMode: YawControlMode = YawControlMode.ANGLE,
+        rollPitchCoordinateSystem: FlightCoordinateSystem = FlightCoordinateSystem.BODY,
+        sendAction: (VirtualStickFlightControlParam) -> Unit
+    ) {
+        repeat(durationInSeconds * 5 - 1) { iteration ->
+            val param = VirtualStickFlightControlParam().apply {
+                this.pitch = pitch
+                this.roll = roll
+                this.yaw = yaw
+                this.verticalThrottle = verticalThrottle
+                this.verticalControlMode = verticalControlMode
+                this.rollPitchControlMode = rollPitchControlMode
+                this.yawControlMode = yawControlMode
+                this.rollPitchCoordinateSystem = rollPitchCoordinateSystem
+            }
+            sendAction(param)
+//            println("第 ${iteration + 1} 次发送参数：$param")
+            delay(200) // 每次间隔指定时间，即5Hz
         }
     }
 
@@ -644,18 +982,41 @@ class WayPointV3Fragment : DJIFragment() {
         return BaseLine
     }
 
-    fun downloadPhotoFixedPath() : String? {
-        var bitmap: String? = null
+//    fun downloadPhotoFixedPath() : String? {
+//        var bitmap: String? = null
+//        // 获取文件列表
+//        // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
+//        mediaVM.pullMediaFileListFromCamera(-1, 1)
+//
+//        // 你可以在 mediaFileListData 更新后再处理选择逻辑，以确保数据已经更新
+//        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
+//            // 下载文件
+//            val mediafiles: ArrayList<MediaFile> = ArrayList(mediaVM.mediaFileListData.value?.data!!)
+//            bitmap = mediaVM.downloadMediaFileFixedPath(mediafiles)
+//        }
+//        Log.d(TAG,  "downloadPhotoFixedPath: String")
+//        return bitmap
+//    }
+
+    suspend fun downloadPhotoFixedPath(): String? {
         // 获取文件列表
-        // 从摄像头中获取指定数量和从指定索引开始的媒体文件,mediaFileListData 会更新
         mediaVM.pullMediaFileListFromCamera(-1, 1)
 
-        // 你可以在 mediaFileListData 更新后再处理选择逻辑，以确保数据已经更新
-        mediaVM.mediaFileListData.observe(viewLifecycleOwner) {
-            // 下载文件
-            val mediafiles: ArrayList<MediaFile> = ArrayList(mediaVM.mediaFileListData.value?.data!!)
-            bitmap = mediaVM.downloadMediaFileFixedPath(mediafiles)
+        // 使用挂起函数等待 mediaFileListData 更新
+        val mediaFiles = suspendCancellableCoroutine<List<MediaFile>> { cont ->
+            mediaVM.mediaFileListData.observe(viewLifecycleOwner) { mediaFileList ->
+                if (!cont.isCompleted) {
+                    cont.resume(mediaFileList.data!!) // 返回获取到的数据
+                }
+            }
         }
+
+        // 转换为 ArrayList<MediaFile>
+        val mediaFileList = ArrayList(mediaFiles)  // 将 mediaFiles 转换为 ArrayList<MediaFile>
+
+        // 下载文件
+        var bitmap: String? = null
+        bitmap = mediaVM.downloadMediaFileFixedPath(mediaFileList)
         return bitmap
     }
 
@@ -983,6 +1344,53 @@ class WayPointV3Fragment : DJIFragment() {
         }
 
 
+        // 处理文件选择结果
+        if (requestCode == REQUEST_CODE_IMPORT_KML && resultCode == RESULT_OK) {
+            data?.data?.let { uri ->
+                try {
+                    // 读取 KML 文件内容
+                    val inputStream = requireContext().contentResolver.openInputStream(uri)
+                    if (inputStream != null) {
+                        routePoints = readLatLngsFromKML(inputStream)
+                    }
+
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    ToastUtils.showToast( "无法导入 KML 文件", Toast.LENGTH_SHORT)
+                }
+            }
+        }
+
+    }
+
+    fun readLatLngsFromKML(inputStream: InputStream): List<LatLng> {
+        val points = mutableListOf<LatLng>()
+        val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
+        var line: String?
+
+        while (reader.readLine().also { line = it } != null) {
+            // 查找包含 <coordinates> 标签的行
+            line?.trim()?.let {
+                if (it.startsWith("<coordinates>") && it.endsWith("</coordinates>")) {
+                    val coordinates = it
+                        .replace("<coordinates>", "")
+                        .replace("</coordinates>", "")
+                        .trim()
+                    val parts = coordinates.split(",")
+                    if (parts.size >= 2) {
+                        try {
+                            val longitude = parts[0].toDouble()
+                            val latitude = parts[1].toDouble()
+                            points.add(LatLng(latitude, longitude))
+                        } catch (e: NumberFormatException) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            }
+        }
+        reader.close()
+        return points
     }
 
     fun checkPath(){

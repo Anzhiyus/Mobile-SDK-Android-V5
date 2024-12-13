@@ -30,12 +30,14 @@ import io.reactivex.rxjava3.annotations.Nullable
 import kotlinx.android.synthetic.main.layout_media_play_download_progress.progressBar
 import kotlinx.android.synthetic.main.layout_media_play_download_progress.progressInfo
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.ArrayList
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 /**
@@ -258,63 +260,117 @@ class MediaVM : DJIViewModel() {
         })
     }
 
-    fun  downloadMediaFileFixedPath(mediaList : ArrayList<MediaFile>) : String? {
-        var bitmap: String? = null
+//    fun  downloadMediaFileFixedPath(mediaList : ArrayList<MediaFile>) : String? {
+//        var bitmap: String? = null
+//        mediaList.forEach {
+//            bitmap = downloadFileFixedPath(it)
+//        }
+//        return bitmap
+//    }
+//
+//    private fun downloadFileFixedPath(mediaFile :MediaFile ) : String?{
+//        val dirs = File(DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile"))
+//        if (!dirs.exists()) {
+//            dirs.mkdirs()
+//        }
+//        val filepath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile/"  +"DroneFlyDownLoad.jpg")
+//        val file = File(filepath)
+//        var offset = 0L
+//        val outputStream = FileOutputStream(file, true)
+//        val bos = BufferedOutputStream(outputStream)
+//        mediaFile?.pullOriginalMediaFileFromCamera(offset, object : MediaFileDownloadListener {
+//            override fun onStart() {
+//                LogUtils.i("MediaFile" , "${mediaFile.fileIndex } start download"  )
+//            }
+//
+//            override fun onProgress(total: Long, current: Long) {
+//                val fullSize = offset + total;
+//                val downloadedSize = offset + current
+//                val data: Double = StringUtils.formatDouble((downloadedSize.toDouble() / fullSize.toDouble()))
+//                val result: String = StringUtils.formatDouble(data * 100, "#0").toString() + "%"
+//                LogUtils.i("MediaFile"  , "${mediaFile.fileIndex}  progress $result")
+//            }
+//
+//            override fun onRealtimeDataUpdate(data: ByteArray, position: Long) {
+//                try {
+//                    bos.write(data)
+//                    bos.flush()
+//                } catch (e: IOException) {
+//                    LogUtils.e("MediaFile", "write error" + e.message)
+//                }
+//            }
+//
+//            override fun onFinish() {
+//                try {
+//                    outputStream.close()
+//                    bos.close()
+//                } catch (error: IOException) {
+//                    LogUtils.e("MediaFile", "close error$error")
+//                }
+//                LogUtils.i("MediaFile" , "${mediaFile.fileIndex }  download finish"  )
+//            }
+//
+//            override fun onFailure(error: IDJIError?) {
+//                LogUtils.e("MediaFile", "download error$error")
+//            }
+//
+//        })
+//        return filepath
+//    }
+
+    suspend fun downloadMediaFileFixedPath(mediaList: ArrayList<MediaFile>): String? {
+        var filePath: String? = null
         mediaList.forEach {
-            bitmap = downloadFileFixedPath(it)
+            filePath = downloadFileFixedPathSuspend(it) // 挂起等待每个文件完成下载
         }
-        return bitmap
+        return filePath
     }
 
-    private fun downloadFileFixedPath(mediaFile :MediaFile ) : String?{
-        val dirs = File(DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile"))
-        if (!dirs.exists()) {
-            dirs.mkdirs()
+    suspend fun downloadFileFixedPathSuspend(mediaFile: MediaFile): String? =
+        suspendCancellableCoroutine { continuation ->
+            val dirs = File(DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile"))
+            if (!dirs.exists()) dirs.mkdirs()
+
+            val filePath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/" + "DroneFlyDownLoad.jpg")
+            val file = File(filePath)
+            val outputStream = FileOutputStream(file, true)
+            val bos = BufferedOutputStream(outputStream)
+
+            mediaFile.pullOriginalMediaFileFromCamera(0, object : MediaFileDownloadListener {
+                override fun onStart() {
+                    LogUtils.i("MediaFile", "${mediaFile.fileIndex} start download")
+                }
+
+                override fun onProgress(total: Long, current: Long) {
+                    val result = "${(current * 100 / total)}%"
+                    LogUtils.i("MediaFile", "${mediaFile.fileIndex} progress $result")
+                }
+
+                override fun onRealtimeDataUpdate(data: ByteArray, position: Long) {
+                    try {
+                        bos.write(data)
+                        bos.flush()
+                    } catch (e: IOException) {
+                        LogUtils.e("MediaFile", "write error: ${e.message}")
+                    }
+                }
+
+                override fun onFinish() {
+                    try {
+                        bos.close()
+                        outputStream.close()
+                        LogUtils.i("MediaFile", "${mediaFile.fileIndex} download finish")
+                        continuation.resume(filePath, null) // 完成时恢复协程
+                    } catch (e: IOException) {
+                        continuation.resumeWithException(e) // 错误时抛出异常
+                    }
+                }
+
+                override fun onFailure(error: IDJIError?) {
+                    continuation.resumeWithException(Exception("Download error: $error"))
+                }
+            })
         }
-        val filepath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(),  "/mediafile/"  +"DroneFlyDownLoad.jpg")
-        val file = File(filepath)
-        var offset = 0L
-        val outputStream = FileOutputStream(file, true)
-        val bos = BufferedOutputStream(outputStream)
-        mediaFile?.pullOriginalMediaFileFromCamera(offset, object : MediaFileDownloadListener {
-            override fun onStart() {
-                LogUtils.i("MediaFile" , "${mediaFile.fileIndex } start download"  )
-            }
-
-            override fun onProgress(total: Long, current: Long) {
-                val fullSize = offset + total;
-                val downloadedSize = offset + current
-                val data: Double = StringUtils.formatDouble((downloadedSize.toDouble() / fullSize.toDouble()))
-                val result: String = StringUtils.formatDouble(data * 100, "#0").toString() + "%"
-                LogUtils.i("MediaFile"  , "${mediaFile.fileIndex}  progress $result")
-            }
-
-            override fun onRealtimeDataUpdate(data: ByteArray, position: Long) {
-                try {
-                    bos.write(data)
-                    bos.flush()
-                } catch (e: IOException) {
-                    LogUtils.e("MediaFile", "write error" + e.message)
-                }
-            }
-
-            override fun onFinish() {
-                try {
-                    outputStream.close()
-                    bos.close()
-                } catch (error: IOException) {
-                    LogUtils.e("MediaFile", "close error$error")
-                }
-                LogUtils.i("MediaFile" , "${mediaFile.fileIndex }  download finish"  )
-            }
-
-            override fun onFailure(error: IDJIError?) {
-                LogUtils.e("MediaFile", "download error$error")
-            }
-
-        })
-        return filepath
-    }
 
     // onDownloadComplete 回调
 //    fun downloadMediaFileFixedPath(mediaList: ArrayList<MediaFile>, onDownloadComplete: (String?) -> Unit) {
@@ -488,6 +544,68 @@ class MediaVM : DJIViewModel() {
 //            })
 //        }
 //
+//    }
+
+//    suspend fun downloadFileFixedPath(mediaFile: MediaFile): String? = suspendCancellableCoroutine { continuation ->
+//        val dirs = File(DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile"))
+//        if (!dirs.exists()) {
+//            dirs.mkdirs()
+//        }
+//        val filepath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/" + "DroneFlyDownLoad.jpg")
+//        val file = File(filepath)
+//        var offset = 0L
+//        val outputStream = FileOutputStream(file, true)
+//        val bos = BufferedOutputStream(outputStream)
+//
+//        mediaFile.pullOriginalMediaFileFromCamera(offset, object : MediaFileDownloadListener {
+//            override fun onStart() {
+//                LogUtils.i("MediaFile", "${mediaFile.fileIndex} start download")
+//            }
+//
+//            override fun onProgress(total: Long, current: Long) {
+//                val fullSize = offset + total
+//                val downloadedSize = offset + current
+//                val data: Double = StringUtils.formatDouble(downloadedSize.toDouble() / fullSize.toDouble())
+//                val result: String = StringUtils.formatDouble(data * 100, "#0").toString() + "%"
+//                LogUtils.i("MediaFile", "${mediaFile.fileIndex} progress $result")
+//            }
+//
+//            override fun onRealtimeDataUpdate(data: ByteArray, position: Long) {
+//                try {
+//                    bos.write(data)
+//                    bos.flush()
+//                } catch (e: IOException) {
+//                    LogUtils.e("MediaFile", "write error" + e.message)
+//                }
+//            }
+//
+//            override fun onFinish() {
+//                try {
+//                    bos.close()
+//                    outputStream.close()
+//                } catch (error: IOException) {
+//                    LogUtils.e("MediaFile", "close error$error")
+//                }
+//                LogUtils.i("MediaFile", "${mediaFile.fileIndex} download finish")
+//                continuation.resume(filepath) // 下载完成后返回文件路径
+//            }
+//
+//            override fun onFailure(error: IDJIError?) {
+//                LogUtils.e("MediaFile", "download error$error")
+//                continuation.resumeWithException(Exception("Download failed")) // 下载失败时抛出异常
+//            }
+//        })
+//
+//        // 取消协程时，关闭资源并停止下载
+//        continuation.invokeOnCancellation {
+//            try {
+//                bos.close()
+//                outputStream.close()
+//            } catch (error: IOException) {
+//                LogUtils.e("MediaFile", "close error$error")
+//            }
+//            LogUtils.i("MediaFile", "Download cancelled")
+//        }
 //    }
 
 }

@@ -90,12 +90,9 @@ import kotlinx.android.synthetic.main.frag_virtual_stick_page.simulator_state_in
 import kotlinx.android.synthetic.main.frag_virtual_stick_page.widget_horizontal_situation_indicator
 import kotlinx.android.synthetic.main.frag_waypointv3_page.*
 import kotlinx.android.synthetic.main.view_mission_setting_home.*
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.*
+import kotlinx.coroutines.NonCancellable.isActive
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
@@ -117,8 +114,10 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
-import kotlinx.coroutines.*
-import kotlinx.coroutines.NonCancellable.isActive
+
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.CoroutineContext
+import kotlin.system.measureNanoTime
 
 /**
  * @author feel.feng
@@ -172,6 +171,10 @@ class WayPointV3Fragment : DJIFragment() {
     var currentIndex: Int = 1
     // 全局变量：默认方位角
     var droneCurrentAzimuth: Double = 0.0
+    var isActive:Boolean = true
+    private var kmlSpeed: Double = 5.00
+    private var kmlHeight: Double = 5.00
+    private var kmlTime: Double = 0.00
 
     // 判断OpenCV是否加载成功
     private val loaderCallback: BaseLoaderCallback = object : BaseLoaderCallback(context) {
@@ -217,7 +220,7 @@ class WayPointV3Fragment : DJIFragment() {
                 // 更新全局变量
                 droneCurrentLocation = LatLng(latitude, longitude)
 
-                println("Updated drone location: $droneCurrentLocation")
+//                println("Updated drone location: $droneCurrentLocation")
             } else {
                 println("Failed to extract Latitude and Longitude")
             }
@@ -454,9 +457,15 @@ class WayPointV3Fragment : DJIFragment() {
 //                })
 
                         // 取消当前任务
-            currentTaskJob?.cancel()
-            currentTaskJob = null
-            Log.d("Task", "当前任务已取消")
+            if (isActive)
+            {
+                isActive = false
+                Log.d(TAG, "当前任务已取消")
+            }else{
+                isActive = true
+                Log.d(TAG, "当前任务已开始")
+            }
+
         }
         btn_editKmz.setOnClickListener {
             showEditDialog()
@@ -512,9 +521,6 @@ class WayPointV3Fragment : DJIFragment() {
 
         // 按钮点击事件：启动任务
         btn_download_photo_spf.setOnClickListener {
-            // 如果已有任务正在运行，先取消
-            currentTaskJob?.cancel()
-
             // 启动新的任务
             currentTaskJob = lifecycleScope.launch {
                 enqueueTask {
@@ -534,7 +540,7 @@ class WayPointV3Fragment : DJIFragment() {
         // 导入kml
         btn_dinput_kml_spf.setOnClickListener {
             // 导入kml，则需要把上次任务记录的索引清空
-            currentIndex=1
+//            currentIndex=1
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 type = "application/vnd.google-earth.kml+xml" // 过滤 KML 文件类型
                 addCategory(Intent.CATEGORY_OPENABLE)
@@ -608,14 +614,72 @@ class WayPointV3Fragment : DJIFragment() {
     }
     // 任务函数逻辑
     suspend fun performTask() {
+        var flyTime = kmlTime + (routePoints.size-currentIndex)*25/60
+        ToastUtils.showToast( "航线预计飞行时间min:"+flyTime*100/100, Toast.LENGTH_SHORT)
+        currentIndex= 1
 
         if (routePoints.isEmpty()) {
-            println("航线点为空，无法执行任务。")
+            Log.d(TAG, "航线点为空，无法执行任务")
             return
         }
+        if (isActive) {
+            Log.d(TAG, "航线正在运行：$isActive")
+        }else{
+            Log.d(TAG, "航线已经暂停：$isActive")
+        }
+        Log.d(TAG, "routePoints.size：${routePoints.size}")
+//        kmlHeight=5.00
+        Log.d(TAG, "kmlHeight：${kmlHeight}")
+//        kmlSpeed=4.00
+        Log.d(TAG, "kmlSpeed：${kmlSpeed}")
 
-        while (currentIndex < routePoints.size) {
-            Log.d(TAG, "downloadPhotoFixedPath: start：$currentIndex")
+        while (currentIndex < routePoints.size && isActive) {
+            Log.d(TAG, "所有航线点已完成飞行任务：$isActive")
+            Log.d(TAG, "downloadPhotoFixedPath: start")
+
+
+            var startTime = System.nanoTime()
+            val path = try {
+                downloadPhotoFixedPath()
+            } catch (e: Exception) {
+                Log.e(TAG, "Download failed: ${e.message}")
+                null
+            }
+            Log.d(TAG, "downloadPhotoFixedPath: end")
+            // 执行需要测量运行时间的代码块
+            var endTime = System.nanoTime()
+            var elapsedTime = endTime - startTime
+            // 将纳秒转换为秒
+            var elapsedTimeInSeconds = elapsedTime / 1_000_000_000.0
+            Log.d(TAG, "downloadPhotoFixedPath elapsedTime: $elapsedTimeInSeconds")
+
+            startTime = System.nanoTime()
+            Log.d("TaskQueue", "path: $path")
+            var resultValue = 0.0
+            if (path != null) {
+                resultValue = downloadPhotoSuspend(
+                    path,
+                    27.7,
+                    0.01229,
+                    3.3 / 1000 / 1000,
+                    requireContext()
+                )
+                Log.d(TAG,  "DJI回调返回的结果: $resultValue")
+            } else {
+                Log.d(TAG, "DJI回调返回的结果: 下载失败，无法获取路径")
+            }
+            // 执行需要测量运行时间的代码块
+            endTime = System.nanoTime()
+            elapsedTime = endTime - startTime
+            // 将纳秒转换为秒
+            elapsedTimeInSeconds = elapsedTime / 1_000_000_000.0
+            Log.d(TAG, "downloadPhotoSuspend elapsedTime: $elapsedTimeInSeconds")
+
+            // 高程调整距离
+            resultValue = kmlHeight + 5.0  // 预设调整距离
+            resultValue = resultValue - kmlHeight
+
+            Log.d(TAG, "VirtualStick: start：$currentIndex")
             val start: LatLng
             val end: LatLng
 
@@ -641,58 +705,68 @@ class WayPointV3Fragment : DJIFragment() {
             azimuth = (azimuth* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
             var radians = Math.toRadians(azimuth)
             // 计算速度分量 B 和 C
-            var northSpeed = cos(radians) * 5 // 南北速度分量
+            var northSpeed = cos(radians) * kmlSpeed // 南北速度分量
             northSpeed = (northSpeed* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
-            var eastSpeed = sin(radians) * 5 // 东西速度分量
+            var eastSpeed = sin(radians) * kmlSpeed // 东西速度分量
             eastSpeed = (eastSpeed* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
             // 计算飞行时间
-            val time = (distance / 5).toInt() // 将飞行时间转换为 Int
+            val time = (distance / kmlSpeed) // 将飞行时间转换为 Int
+            var verticalSpeed = resultValue/time // 东西速度分量
+            verticalSpeed = (verticalSpeed* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
 
             // 判断 azimuth 与 globalAzimuth 的差值是否小于 1
             if (abs(azimuth - droneCurrentAzimuth) < 1) {
                 // 差值小于 1，直接运行一次
                 // 发送虚拟杆参数
-                sendVirtualStickParameters(time, northSpeed,eastSpeed,azimuth,
+                sendVirtualStickParameters(time, northSpeed,eastSpeed,azimuth,verticalSpeed,
                     sendAction = { param ->
                         virtualStickVM.sendVirtualStickAdvancedParam(param)
                     }
                 )
             } else {
                 // 差值大于等于 1，更新 globalAzimuth，并运行两次
+                azimuth =  droneCurrentAzimuth - droneCurrentAzimuth
+                // 判断结果大于 180 或小于 -180
+                if (azimuth > 180) {
+                    azimuth -= 180
+                } else if (azimuth < -180) {
+                    azimuth += 180
+                }
                 droneCurrentAzimuth = azimuth
                 // 发送虚拟杆参数，修改方位
-                sendVirtualStickParameters(1, 0.0,0.0,azimuth,
+                sendVirtualStickParameters(1.0, 0.0,0.0,azimuth,
                     sendAction = { param ->
                         virtualStickVM.sendVirtualStickAdvancedParam(param)
                     }
                 )
                 // 发送虚拟杆参数
-                sendVirtualStickParameters(time, northSpeed,eastSpeed,azimuth,
+                sendVirtualStickParameters(time, northSpeed,eastSpeed,azimuth,verticalSpeed,
                     sendAction = { param ->
                         virtualStickVM.sendVirtualStickAdvancedParam(param)
                     }
                 )
             }
 
-            // 更新当前索引，保存持久化状态
-            currentIndex++
-
             // 保存数据 在应用退出或暂停时，保存循环状态：
+            currentIndex++
             val sharedPreferences = requireContext().getSharedPreferences("AppData", Context.MODE_PRIVATE)
             val editor = sharedPreferences.edit()
             editor.putInt("currentIndex", currentIndex) // 保存循环的当前索引
             editor.apply()
-            Log.d(TAG, "downloadPhotoFixedPath: end：$currentIndex")
-
-            if (!isActive) {
-                // 协程已取消，退出循环
-                Log.d("Task", "任务已取消，停止执行")
-                break
-            }
+            Log.d(TAG, "VirtualStick: end：$currentIndex")
+            Log.d(TAG, "VirtualStick: end：${routePoints.size}")
         }
+        // 航线运行结束，重置索引
+        if (currentIndex >= routePoints.size) {
+            currentIndex = 1
+        }
+        val sharedPreferences = requireContext().getSharedPreferences("AppData", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putInt("currentIndex", currentIndex) // 保存循环的当前索引
+        editor.apply()
+
         Log.d(TAG, "所有航线点已完成飞行任务")
         println("所有航线点已完成飞行任务！")
-
 
 //        Log.d(TAG, "sendVirtualStickParameters: picth")
 //        sendVirtualStickParameters(5, 5.0,0.0,0.0,
@@ -702,14 +776,14 @@ class WayPointV3Fragment : DJIFragment() {
 //        )
 //
 //        Log.d(TAG, "sendVirtualStickParameters: picth2")
-//        sendVirtualStickParameters(5, 5.0,0.0,45.0,
+//        sendVirtualStickParameters(5, 5.0,0.0,0.0,5.0,
 //            sendAction = { param ->
 //                virtualStickVM.sendVirtualStickAdvancedParam(param)
 //            }
 //        )
 //
 //        Log.d(TAG, "sendVirtualStickParameters: picth3")
-//        sendVirtualStickParameters(5, 5.0,0.0,-45.0,
+//        sendVirtualStickParameters(5, 5.0,5.0,0.0,5.0,
 //            sendAction = { param ->
 //                virtualStickVM.sendVirtualStickAdvancedParam(param)
 //            }
@@ -783,6 +857,13 @@ class WayPointV3Fragment : DJIFragment() {
         return EARTH_RADIUS * c
     }
 
+//    fun calculateDistance(point1: LatLng, point2: LatLng): Double {
+//        val dx = point2.longitude - point1.longitude
+//        val dy = point2.latitude - point1.latitude
+//        return Math.sqrt(dx * dx + dy * dy) * 111000 // 简单近似，每经纬度差值约为111公里
+//    }
+
+
     // 计算两点之间的方位角（相对于正北方向的顺时针角度，单位：度）
     fun calculateBearing(start: LatLng, end: LatLng): Double {
         val startLat = Math.toRadians(start.latitude)
@@ -805,7 +886,7 @@ class WayPointV3Fragment : DJIFragment() {
 
 
     suspend fun sendVirtualStickParameters(
-        durationInSeconds: Int = 1,
+        durationInSeconds: Double = 1.0,
         pitch: Double = 0.0,
         roll: Double = 0.0,
         yaw: Double = 0.0,
@@ -816,7 +897,8 @@ class WayPointV3Fragment : DJIFragment() {
         rollPitchCoordinateSystem: FlightCoordinateSystem = FlightCoordinateSystem.BODY,
         sendAction: (VirtualStickFlightControlParam) -> Unit
     ) {
-        repeat(durationInSeconds * 5 - 1) { iteration ->
+        var times= Math.ceil(durationInSeconds / 0.2).toInt()
+        repeat( times- 1) { iteration ->
             val param = VirtualStickFlightControlParam().apply {
                 this.pitch = pitch
                 this.roll = roll
@@ -1351,7 +1433,17 @@ class WayPointV3Fragment : DJIFragment() {
                     // 读取 KML 文件内容
                     val inputStream = requireContext().contentResolver.openInputStream(uri)
                     if (inputStream != null) {
-                        routePoints = readLatLngsFromKML(inputStream)
+                        val kmlData: Map<String, Object> = readLatLngsFromKML(inputStream)
+
+                        routePoints = kmlData["points"] as? List<LatLng>?: emptyList()
+                        kmlHeight = kmlData["height"] as? Double?:5.0
+                        kmlSpeed = kmlData["speed"] as? Double?:5.0
+                        kmlTime = kmlData["speed"] as? Double?:0.0
+                        Log.d(TAG, "kmlSpeed：${kmlSpeed}")
+                        Log.d(TAG, "kmlSpeed：${kmlData["speed"]}")
+                        Log.d(TAG, "kmlHeight：${kmlData["height"]}")
+                        Log.d(TAG, "kmlTime：${kmlData["time"]}")
+
                     }
 
                 } catch (e: Exception) {
@@ -1363,14 +1455,48 @@ class WayPointV3Fragment : DJIFragment() {
 
     }
 
-    fun readLatLngsFromKML(inputStream: InputStream): List<LatLng> {
-        val points = mutableListOf<LatLng>()
+//    fun readLatLngsFromKML(inputStream: InputStream): List<LatLng> {
+//        val points = mutableListOf<LatLng>()
+//        val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
+//        var line: String?
+//
+//        while (reader.readLine().also { line = it } != null) {
+//            // 查找包含 <coordinates> 标签的行
+//            line?.trim()?.let {
+//                if (it.startsWith("<coordinates>") && it.endsWith("</coordinates>")) {
+//                    val coordinates = it
+//                        .replace("<coordinates>", "")
+//                        .replace("</coordinates>", "")
+//                        .trim()
+//                    val parts = coordinates.split(",")
+//                    if (parts.size >= 2) {
+//                        try {
+//                            val longitude = parts[0].toDouble()
+//                            val latitude = parts[1].toDouble()
+//                            points.add(LatLng(latitude, longitude))
+//                        } catch (e: NumberFormatException) {
+//                            e.printStackTrace()
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//        reader.close()
+//        return points
+//    }
+
+    fun readLatLngsFromKML(inputStream: InputStream): Map<String, Object> {
+        val resultMap = mutableMapOf<String, Object>() // 用于存储返回的 Map
+        val points = mutableListOf<LatLng>() // 用于存储 LatLng 列表
+        var height: Double? = null  // 假设读取的高度数据
+        var speed: Double? = null   // 假设读取的速度数据
+        var time: Double? = null   // 假设读取的速度数据
         val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
         var line: String?
 
         while (reader.readLine().also { line = it } != null) {
-            // 查找包含 <coordinates> 标签的行
             line?.trim()?.let {
+                // 查找包含 <coordinates> 标签的行
                 if (it.startsWith("<coordinates>") && it.endsWith("</coordinates>")) {
                     val coordinates = it
                         .replace("<coordinates>", "")
@@ -1387,10 +1513,33 @@ class WayPointV3Fragment : DJIFragment() {
                         }
                     }
                 }
+
+                // 假设你还需要从 KML 中解析 <height> 和 <speed> 等信息
+                if (it.contains("<height>")) {
+                    val heightMatch = it.replace("<height>", "").replace("</height>", "").trim()
+                    height = heightMatch.toDoubleOrNull()  // 解析高度
+                }
+
+                if (it.contains("<speed>")) {
+                    val speedMatch = it.replace("<speed>", "").replace("</speed>", "").trim()
+                    speed = speedMatch.toDoubleOrNull()  // 解析速度
+                }
+
+                if (it.contains("<time>")) {
+                    val speedMatch = it.replace("<time>", "").replace("</time>", "").trim()
+                    time = speedMatch.toDoubleOrNull()  // 解析速度
+                }
             }
         }
+
+        // 将解析的数据存储到 Map 中
+        resultMap["points"] = points as Object
+        height?.let { resultMap["height"] = it as Object}  // 如果有高度数据，存储
+        speed?.let { resultMap["speed"] = it as Object}    // 如果有速度数据，存储
+        time?.let { resultMap["time"] = it as Object}    // 如果有速度数据，存储
+
         reader.close()
-        return points
+        return resultMap
     }
 
     fun checkPath(){

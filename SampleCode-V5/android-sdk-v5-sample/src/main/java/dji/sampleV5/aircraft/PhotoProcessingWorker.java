@@ -67,8 +67,8 @@ public class PhotoProcessingWorker extends Worker {
         SharedPreferences sharedPreferences = getApplicationContext().getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE);
         String tempDataPath2 = sharedPreferences.getString("tempDataPath2", "kong");
         double tempDataIdw = sharedPreferences.getFloat("tempDataIdw", 0.0f);
-//        List<Double> idwData_Smooth1 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth1", "[]"));
-//        List<Double> idwData_Smooth2 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth2", "[]"));
+        List<Double> idwData_Smooth1 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth1", "[]"));
+        List<Double> idwData_Smooth2 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth2", "[]"));
         List<Double> idwData_KalmanFilter = jsonToDoubleList(sharedPreferences.getString("idwData_KalmanFilter", "[]"));
 
         // 获取传输数据
@@ -128,27 +128,33 @@ public class PhotoProcessingWorker extends Worker {
             idw = tempDataIdw;
         tempDataIdw = idw;
 
-//        // 第一次加权平滑结果
-//        calculateWeightSmooth(idwData_Smooth1, idw, 10,weights);
-//        // 第二次加权平滑结果
-//        smoothmean = calculateWeightSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
-//        Log.d(TAG, "smoothmean: "+Math.round(smoothmean * 10) / 10.0 );
+        long startTime = System.nanoTime();
+        // 第一次加权平滑结果
+        calculateWeightSmooth(idwData_Smooth1, idw, 10,weights);
+        // 第二次加权平滑结果
+        smoothmean = calculateWeightSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
+        Log.d(TAG, "smoothmean: "+Math.round(smoothmean * 10) / 10.0 );
 
+        // 执行需要测量运行时间的代码块
+        long endTime = System.nanoTime();
+        long elapsedTime = endTime - startTime;
+        Log.d(TAG, "smoothmean elapsedTime: "+elapsedTime );
         // 卡尔曼滤波
-        Log.d(TAG, "KalmanFilter: "+applyKalmanFilter(idwData_KalmanFilter, idw));
+//        Log.d(TAG, "KalmanFilter: "+applyKalmanFilter(idwData_KalmanFilter, idw));
 
         // 更新并保存共享数据
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString("tempDataPath2", tempDataPath2);
         editor.putFloat("tempDataIdw", (float) tempDataIdw);
-//        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
-//        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
-        editor.putString("idwData_KalmanFilter", doubleListToJson(idwData_KalmanFilter));
+        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
+        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
+//        editor.putString("idwData_KalmanFilter", doubleListToJson(idwData_KalmanFilter));
         editor.apply();
 
         // 返回结果
         Data outputData = new Data.Builder()
-                .putDouble("result_value", idwData_KalmanFilter.get(idwData_KalmanFilter.size() - 1))
+//                .putDouble("result_value", idwData_KalmanFilter.get(idwData_KalmanFilter.size() - 1))
+                .putDouble("result_value", Math.round(smoothmean * 10) / 10.0 )
                 .build();
         return Result.success(outputData);
     }

@@ -2,6 +2,7 @@ package dji.sampleV5.aircraft.models
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.data.DJIToastResult
@@ -35,7 +36,10 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.text.SimpleDateFormat
 import java.util.ArrayList
+import java.util.Date
+import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -323,17 +327,26 @@ class MediaVM : DJIViewModel() {
         mediaList.forEach {
             filePath = downloadFileFixedPathSuspend(it) // 挂起等待每个文件完成下载
         }
+        Log.d(TAG, "downloadMediaFileFixedPath: filePath：$filePath")
         return filePath
     }
 
     suspend fun downloadFileFixedPathSuspend(mediaFile: MediaFile): String? =
         suspendCancellableCoroutine { continuation ->
-            val dirs = File(DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile"))
+            // 获取当前时间并格式化为年月日时分秒
+            var dateFormat = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
+            var currentTime = dateFormat.format(Date())
+
+            val dirs = File(DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/$currentTime"))
             if (!dirs.exists()) dirs.mkdirs()
 
-            val filePath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/" + "DroneFlyDownLoad.jpg")
+            dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+            currentTime = dateFormat.format(Date())
+            val filePath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/Picture_$currentTime.jpg")
+
+//            val filePath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/" + "DroneFlyDownLoad.jpg")
             val file = File(filePath)
-            val outputStream = FileOutputStream(file, true)
+            val outputStream = FileOutputStream(file, false) // 覆盖模式
             val bos = BufferedOutputStream(outputStream)
 
             mediaFile.pullOriginalMediaFileFromCamera(0, object : MediaFileDownloadListener {

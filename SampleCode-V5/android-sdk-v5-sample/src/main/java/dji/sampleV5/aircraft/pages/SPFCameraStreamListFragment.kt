@@ -1,6 +1,7 @@
 package dji.sampleV5.aircraft.pages
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -51,18 +52,25 @@ class SPFCameraStreamListFragment : DJIFragment() {
 //            ft.replace(frameLayout.id, CameraStreamDetailFragment.newInstance(cameraIndex, true), cameraIndex.name)
 //        }
 
-        if (availableCameraList.isNotEmpty()) {
-            val lastCameraIndex = availableCameraList.last() // 获取最后一个元素
+        // 查找 FPV 对象
+        val fpvCamera = availableCameraList.find { it == ComponentIndexType.FPV }
+
+        if (fpvCamera != null) {
+            // 添加 FPV 相机布局
             val frameLayout = FrameLayout(llCameraList.context)
             frameLayout.id = View.generateViewId()
             val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
             llCameraList.addView(frameLayout, lp)
 
+            // 替换为 FPV 对应的 Fragment
             ft.replace(
                 frameLayout.id,
-                SPFCameraStreamDetailFragment.newInstance(lastCameraIndex, true),
-                lastCameraIndex.name
+                SPFCameraStreamDetailFragment.newInstance(fpvCamera, true),
+                fpvCamera.name
             )
+        } else {
+            // 如果 FPV 不存在，记录日志或进行其他处理
+            Log.e("CameraUpdate", "FPV camera not found in the list")
         }
 
         ft.commitAllowingStateLoss()

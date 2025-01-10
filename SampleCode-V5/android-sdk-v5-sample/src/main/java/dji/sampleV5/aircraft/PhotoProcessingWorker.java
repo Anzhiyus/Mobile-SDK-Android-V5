@@ -1,5 +1,7 @@
 package dji.sampleV5.aircraft;
 
+import static androidx.core.content.ContentProviderCompat.requireContext;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -30,6 +32,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -128,33 +131,33 @@ public class PhotoProcessingWorker extends Worker {
             idw = tempDataIdw;
         tempDataIdw = idw;
 
-        long startTime = System.nanoTime();
-        // 第一次加权平滑结果
-        calculateWeightSmooth(idwData_Smooth1, idw, 10,weights);
-        // 第二次加权平滑结果
-        smoothmean = calculateWeightSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
-        Log.d(TAG, "smoothmean: "+Math.round(smoothmean * 10) / 10.0 );
-
-        // 执行需要测量运行时间的代码块
-        long endTime = System.nanoTime();
-        long elapsedTime = endTime - startTime;
-        Log.d(TAG, "smoothmean elapsedTime: "+elapsedTime );
+//        long startTime = System.nanoTime();
+//        // 第一次加权平滑结果
+//        calculateWeightSmooth(idwData_Smooth1, idw, 10,weights);
+//        // 第二次加权平滑结果
+//        smoothmean = calculateWeightSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
+//        Log.d(TAG, "smoothmean: "+Math.round(smoothmean * 10) / 10.0 );
+//
+//        // 执行需要测量运行时间的代码块
+//        long endTime = System.nanoTime();
+//        long elapsedTime = endTime - startTime;
+//        Log.d(TAG, "smoothmean elapsedTime: "+elapsedTime );
         // 卡尔曼滤波
-//        Log.d(TAG, "KalmanFilter: "+applyKalmanFilter(idwData_KalmanFilter, idw));
+        Log.d(TAG, "KalmanFilter: "+applyKalmanFilter(idwData_KalmanFilter, idw));
 
         // 更新并保存共享数据
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString("tempDataPath2", tempDataPath2);
         editor.putFloat("tempDataIdw", (float) tempDataIdw);
-        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
-        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
-//        editor.putString("idwData_KalmanFilter", doubleListToJson(idwData_KalmanFilter));
+//        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
+//        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
+        editor.putString("idwData_KalmanFilter", doubleListToJson(idwData_KalmanFilter));
         editor.apply();
 
         // 返回结果
         Data outputData = new Data.Builder()
-//                .putDouble("result_value", idwData_KalmanFilter.get(idwData_KalmanFilter.size() - 1))
-                .putDouble("result_value", Math.round(smoothmean * 10) / 10.0 )
+                .putDouble("result_value", idwData_KalmanFilter.get(idwData_KalmanFilter.size() - 1))
+//                .putDouble("result_value", Math.round(smoothmean * 10) / 10.0 )
                 .build();
         return Result.success(outputData);
     }
@@ -238,7 +241,7 @@ public class PhotoProcessingWorker extends Worker {
         matcher.knnMatch(descriptors1, descriptors2, matches, 2);
 
         // 使用比值测试来剔除错误匹配
-        float ratioThresh = 0.7f;
+        float ratioThresh = 1.0f;
         List<DMatch> goodMatchesList = new ArrayList<>();
         for (int i = 0; i < matches.size(); i++) {
             if (matches.get(i).rows() > 1) {
@@ -273,17 +276,19 @@ public class PhotoProcessingWorker extends Worker {
 
             // 视差
             double Parallax=Math.sqrt((point1.x - point2.x) *(point1.x - point2.x)+ (point1.y - point2.y)*(point1.y - point2.y));
+
             AviationHighPoints[i]=new Point(keyPointArray2[Idx2].pt.x-img2.cols()/2, keyPointArray2[Idx2].pt.y-img2.rows()/2);
             // 距离=焦距*基线/视差   AviationHigh=FocalLength * BaseLine / (Parallax * PixelDim)
             AviationHigh[i]=FocalLength * BaseLine / (Parallax * PixelDim);
+            Log.d(TAG, "Parallax: "+ Parallax*10.0 / 10.0+"AviationHigh[i]: "+ AviationHigh[i]*10.0 / 10.0);
 
-            // 阈值判断
-            if (AviationHigh[i] < 60) {
-                AviationHigh[i] = 60.0;
-            }
-            else if (AviationHigh[i] > 1200) {
-                AviationHigh[i] = 1200.0;
-            }
+//            // 阈值判断
+//            if (AviationHigh[i] < 60) {
+//                AviationHigh[i] = 60.0;
+//            }
+//            else if (AviationHigh[i] > 1200) {
+//                AviationHigh[i] = 1200.0;
+//            }
         }
 
         // 航线方向平均值
@@ -296,10 +301,33 @@ public class PhotoProcessingWorker extends Worker {
         long elapsedTime = endTime - startTime;
 
         // 航高过滤5%和95%
-        filterDataInPlace(AviationHigh, AviationHighPoints);
+//        filterDataInPlace(AviationHigh, AviationHighPoints);
 
         // 根据行高 AviationHigh 和坐标 AviationHighPoints 进行反距离加权
         double idw = calculateWeight(AviationHigh, AviationHighPoints);
+
+        // CSV 文件路径
+        String csvFilePath = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106/output.csv";
+
+        try (FileWriter writer = new FileWriter(csvFilePath)) {
+            // 写入 CSV 头部
+            writer.append("AviationHigh,AviationHighPointX,AviationHighPointY\n");
+
+            // 写入数据行
+            for (int i = 0; i < AviationHigh.length; i++) {
+                writer.append(String.valueOf(AviationHigh[i])) // AviationHigh
+                        .append(',')
+                        .append(String.valueOf(AviationHighPoints[i].x)) // Point X
+                        .append(',')
+                        .append(String.valueOf(AviationHighPoints[i].y)) // Point Y
+                        .append('\n');
+            }
+            System.out.println("CSV file saved as: " + csvFilePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+
         double weightedAviationHighGS = calculateWeightGS(AviationHigh, AviationHighPoints, boundaryPoint, img2.cols()/3);
         Log.d(TAG, "GS距离加权: "+ Math.round(weightedAviationHighGS * 10) / 10.0);
         Log.d(TAG, "GS距离加权: "+ AviationHigh.toString());

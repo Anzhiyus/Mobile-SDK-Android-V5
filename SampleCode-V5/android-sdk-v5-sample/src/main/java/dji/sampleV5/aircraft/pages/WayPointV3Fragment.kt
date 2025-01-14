@@ -160,7 +160,6 @@ class WayPointV3Fragment : DJIFragment() {
     private val REQUEST_CODE_IMPORT_KML  = 3 // 处理文件选择结果
 
 
-
     private val showWaypoints : ArrayList<WaypointInfoModel> = ArrayList()
     private val pointMarkers : ArrayList<DJIMarker?> = ArrayList()
     var curMissionPath = ""
@@ -180,18 +179,14 @@ class WayPointV3Fragment : DJIFragment() {
     private val basicAircraftControlVM: BasicAircraftControlVM by activityViewModels()
     private val virtualStickVM: VirtualStickVM by activityViewModels()
     private val simulatorVM: SimulatorVM by activityViewModels()
-    private val deviation: Double = 0.02
 
     var routePoints: List<DJILatLng> = mutableListOf()
     // 声明全局变量，用来存储无人机当前位置
     var droneCurrentLocation: DJILatLng? = null
-    // 全局变量：地球半径（单位：米）
-    val EARTH_RADIUS = 6371e3
     // 当前航点索引（持久化变量，可存储在文件、数据库或 SharedPreferences 中）
     var currentIndex: Int = 0
     // 全局变量：默认方位角
     var droneLastAzimuth: Double = 0.0
-    var droneCurrentAzimuth: Double = 0.0
     var isActive:Boolean = true
     private var kmlSpeed: Double = 5.00
     private var kmlHeight: Double = 5.00
@@ -200,9 +195,6 @@ class WayPointV3Fragment : DJIFragment() {
     var gpsFileNamePath: String = ""
 
     private var updateJob: Job? = null
-
-
-
 
 
     // 判断OpenCV是否加载成功
@@ -229,18 +221,16 @@ class WayPointV3Fragment : DJIFragment() {
 
         // 虚拟摇杆
         widget_horizontal_situation_indicator.setSimpleModeEnable(true)
-//        initBtnClickListener()
         // 摇杆监听
         virtualStickVM.listenRCStick()
+        // 显示虚拟遥感监听数据
         simulatorVM.simulatorStateSb.observe(viewLifecycleOwner) {
             simulator_state_info_tv.text = it
         }
 
-        // 实时更新位置
-        startUpdatingAircraftLocation()
-
-        //  读取数据 在应用启动时，读取保存的状态：
+        //  在应用启动时，读取保存的数据：
         val sharedPreferences = requireContext().getSharedPreferences("AppData", Context.MODE_PRIVATE)
+        // 读取航线当前运行航点索引
         currentIndex = sharedPreferences.getInt("currentIndex", 0) // 默认从0开始
 
         // 初始化OpenCV
@@ -250,16 +240,18 @@ class WayPointV3Fragment : DJIFragment() {
             loaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS)
         }
 
+        // 缩略图切换监听
         thumbnail_click_overlay.setOnClickListener {
-            Log.d(TAG,"窗口点击事件")
+            Log.d(TAG,"右窗口点击事件")
             switchViews(main_window, thumbnail_window_left, thumbnail_window, isLeftThumbnail = false)
         }
         thumbnail_click_overlay_left.setOnClickListener {
-            Log.d(TAG,"窗口点击事件")
+            Log.d(TAG,"左窗口点击事件")
             switchViews(main_window, thumbnail_window_left, thumbnail_window, isLeftThumbnail = true)
         }
 
         prepareMissionData()
+        // 所有按钮监听
         initView(savedInstanceState)
         initData()
         startTaskQueueConsumer()
@@ -267,20 +259,22 @@ class WayPointV3Fragment : DJIFragment() {
 
         mediaVM.init()
 
-//        takePhoto() // 读取本地文件计算基线距离
+//        loadLocalPhoto() // 读取本地文件（计算基线距离）
         clearSharedPreferences()
         i = 0
 
-        // 实例化航线绘制工具
+        // 实例化航线绘制工具、航线规划对话框
         initWayLinePlan()
 
-        // 如果没有无人机，初始化位置为当前位置
-        initLocation()
+        // 自定义监听显示无人机位置
+        startUpdatingAircraftLocation()
 
+        // 如果没有连接无人机，初始化位置为当前位置
+        initLocation()
     }
 
+    // 开启虚拟摇杆
     private fun initBtnClickListener() {
-        // 开启虚拟摇杆
         virtualStickVM.enableVirtualStick(object : CommonCallbacks.CompletionCallback {
             override fun onSuccess() {
                 ToastUtils.showToast("enableVirtualStick success.")
@@ -380,7 +374,6 @@ class WayPointV3Fragment : DJIFragment() {
 
             }
         }
-
 
         btn_mission_start.setOnClickListener {
             wayPointV3VM.startMission(
@@ -495,15 +488,10 @@ class WayPointV3Fragment : DJIFragment() {
         btn_take_photo_spf.setOnClickListener {
             ToastUtils.showToast("ToastUtils：DJI开始")
             Log.d(TAG, "DJI开始")
-            mediaVM.takePhoto(object : CommonCallbacks.CompletionCallback {
-                override fun onSuccess() {
-                    ToastUtils.showToast("take photo success")
-                }
-
-                override fun onFailure(error: IDJIError) {
-                    ToastUtils.showToast("take photo failed")
-                }
-            })
+            // 启动协程读取照片
+            lifecycleScope.launch {
+                performTakePhoto()
+            }
         }
 
 //        // 读取视频流中的数据：
@@ -554,6 +542,7 @@ class WayPointV3Fragment : DJIFragment() {
 
         // 按钮点击事件：起飞
         btn_fly_spf.setOnClickListener {
+            // 开启虚拟遥感
             initBtnClickListener()
             // 起飞
             basicAircraftControlVM.startTakeOff(object :
@@ -690,6 +679,12 @@ class WayPointV3Fragment : DJIFragment() {
     private var currentTaskJob: Job? = null
     // 定义一个任务队列（Channel）
     private val taskQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    // 添加任务到队列中
+    fun enqueueTask(task: suspend () -> Unit) {
+        lifecycleScope.launch {
+            taskQueue.send(task)
+        }
+    }
     // 初始化消费者协程
     fun startTaskQueueConsumer() {
         lifecycleScope.launch {
@@ -703,25 +698,6 @@ class WayPointV3Fragment : DJIFragment() {
                 }
             }
         }
-    }
-    // 添加任务到队列中
-    fun enqueueTask(task: suspend () -> Unit) {
-        lifecycleScope.launch {
-            taskQueue.send(task)
-        }
-    }
-
-    suspend fun performTakePhoto() {
-
-    mediaVM.takePhoto(object : CommonCallbacks.CompletionCallback {
-        override fun onSuccess() {
-            ToastUtils.showToast("take photo success")
-        }
-
-        override fun onFailure(error: IDJIError) {
-            ToastUtils.showToast("take photo failed")
-        }
-    })
     }
 
     // 任务函数逻辑
@@ -743,23 +719,21 @@ class WayPointV3Fragment : DJIFragment() {
         var attitude = getGimbalAttitude()
         Log.e(TAG, "attitude: $attitude")
 
-        // 首先，调整高度
+        // 首先，调整高度到航高
         val location = getAircraftLocation()
         var diffHeight = kmlHeight - location.altitude
         if (abs(diffHeight) > 0.1){
             val time = (diffHeight / 5) // 飞行时间
             // 发送虚拟杆参数：控制无人机向上飞行5m/s
-            sendVirtualStickParameters(time, 0.0,0.0,0.0,5.0,
-                sendAction = { param ->
-                    virtualStickVM.sendVirtualStickAdvancedParam(param)
-                }
-            )
+            sendVirtualStickParameters(time, 0.0,0.0,0.0,5.0)
         }
 
-        // 然后，调整位置
+        // 然后，调整位置到航线第一个点
         var distance = DJIGpsUtils.distance(DJILatLng(location.latitude, location.longitude), routePoints[currentIndex])*100/100
         if (abs(distance) > 0.1 && currentIndex > 1){
+            // 从当前位置到航线记录的索引点的方向飞行（考虑到断点续飞）
             moveDroneToPoint(DJILatLng(location.latitude, location.longitude),  routePoints[currentIndex] , 0.0, 0.0)
+            // 从航线起点到航线记录的索引点的方向飞行（假设当前位置为航线起点）
 //            moveDroneToPoint(routePoints[0],  routePoints[currentIndex] , 0.0, 0.0)
         }
 
@@ -775,17 +749,19 @@ class WayPointV3Fragment : DJIFragment() {
         }else{
             Log.d(TAG, "航线已经暂停：$isActive")
         }
-        Log.d(TAG, "routePoints.size：${routePoints.size}")
-        Log.d(TAG, "kmlHeight：${kmlHeight}")
-        Log.d(TAG, "kmlSpeed：${kmlSpeed}")
+        Log.d(TAG, "当前航线routePoints.size：${routePoints.size}")
+        Log.d(TAG, "当前航线kmlHeight：${kmlHeight}")
+        Log.d(TAG, "当前航线kmlSpeed：${kmlSpeed}")
 
         while (currentIndex < routePoints.size && isActive) {
             Log.d(TAG, "所有航线点已完成飞行任务：$isActive")
             Log.d(TAG, "downloadPhotoFixedPath: start")
 
+            // 无人机拍照
             performTakePhoto()
 
             var startTime = System.nanoTime()
+            // 从无人机下载照片到手柄
             val path = try {
                 downloadPhotoFixedPath()
             } catch (e: Exception) {
@@ -832,6 +808,8 @@ class WayPointV3Fragment : DJIFragment() {
             resultValue = kmlHeight  // 1. 调整固定距离
             resultValue = resultValue - kmlHeight
 
+
+
             Log.d(TAG, "VirtualStick: start：$currentIndex")
             val start: DJILatLng
             val end: DJILatLng
@@ -854,47 +832,36 @@ class WayPointV3Fragment : DJIFragment() {
             Log.d(TAG, "起始点：$start")
 
             Log.d(TAG, "目标点：$end")
-            // 控制无人机运动，运动后方位角 = moveDroneToPoint（起始点，终点，当前方位角，调整高度）
-            var distance = DJIGpsUtils.distance(start, end)*100/100
-            distance = (distance* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
-            var azimuth = calculateBearing(start, end)
-            Log.d(TAG, "azimuth：$azimuth")
-            azimuth = (azimuth* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
-            if (azimuth > 180) {
-                azimuth -= 360
-            }
-            Log.d(TAG, "azimuth2：$azimuth")
-
-            // 计算飞行时间
-            val time = (distance / kmlSpeed) // 将飞行时间转换为 Int
-            var verticalSpeed = resultValue/time // 垂直速度分量
-            verticalSpeed = (verticalSpeed* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
-
-            // 判断 azimuth 与 globalAzimuth 的差值是否小于 1
-            if (abs(azimuth - droneLastAzimuth) < 1) {
-                // 差值小于 1，直接运行一次
-                // 发送虚拟杆参数：azimuth控制无人机朝向，即镜头方向。northSpeed（东西）和eastSpeed（南北）控制路线（以镜头方向为正北方向）
-                sendVirtualStickParameters(time, 0.0,kmlSpeed,azimuth,verticalSpeed,
-                    sendAction = { param ->
-                        virtualStickVM.sendVirtualStickAdvancedParam(param)
-                    }
-                )
-            } else {
-                // 发送虚拟杆参数，修改方位
-                Log.d(TAG, "azimuth3：$azimuth")
-                sendVirtualStickParameters(1.0, 0.0,0.0,azimuth,
-                    sendAction = { param ->
-                        virtualStickVM.sendVirtualStickAdvancedParam(param)
-                    }
-                )
-                // 发送虚拟杆参数
-                Log.d(TAG, "azimuth4：$azimuth")
-                sendVirtualStickParameters(time, 0.0,kmlSpeed,azimuth,verticalSpeed,
-                    sendAction = { param ->
-                        virtualStickVM.sendVirtualStickAdvancedParam(param)
-                    }
-                )
-            }
+            var azimuth = moveDroneToPoint(start,  end , droneLastAzimuth, resultValue)
+//            // 控制无人机运动，运动后方位角 = moveDroneToPoint（起始点，终点，当前方位角，调整高度）
+//            var distance = DJIGpsUtils.distance(start, end)*100/100
+//            distance = (distance* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
+//            var azimuth = calculateBearing(start, end)
+//            Log.d(TAG, "azimuth：$azimuth")
+//            azimuth = (azimuth* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
+//            if (azimuth > 180) {
+//                azimuth -= 360
+//            }
+//            Log.d(TAG, "azimuth2：$azimuth")
+//
+//            // 计算飞行时间
+//            val time = (distance / kmlSpeed) // 将飞行时间转换为 Int
+//            var verticalSpeed = resultValue/time // 垂直速度分量
+//            verticalSpeed = (verticalSpeed* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
+//
+//            // 判断 azimuth 与 globalAzimuth 的差值是否小于 1
+//            if (abs(azimuth - droneLastAzimuth) < 1) {
+//                // 差值小于 1，直接运行一次
+//                // 发送虚拟杆参数：azimuth控制无人机朝向，即镜头方向。northSpeed（东西）和eastSpeed（南北）控制路线（以镜头方向为正北方向）
+//                sendVirtualStickParameters(time, 0.0,kmlSpeed,azimuth,verticalSpeed)
+//            } else {
+//                // 发送虚拟杆参数，修改方位
+//                Log.d(TAG, "azimuth3：$azimuth")
+//                sendVirtualStickParameters(1.0, 0.0,0.0,azimuth)
+//                // 发送虚拟杆参数
+//                Log.d(TAG, "azimuth4：$azimuth")
+//                sendVirtualStickParameters(time, 0.0,kmlSpeed,azimuth,verticalSpeed)
+//            }
             droneLastAzimuth = azimuth
 
             // 保存数据 在应用退出或暂停时，保存循环状态：
@@ -934,38 +901,33 @@ class WayPointV3Fragment : DJIFragment() {
         Log.d(TAG, "所有航线点已完成飞行任务")
         println("所有航线点已完成飞行任务！")
 
-//        Log.d(TAG, "sendVirtualStickParameters: picth")
-//        sendVirtualStickParameters(5.0, 0.0,5.0,0.0,
-//            sendAction = { param ->
-//                virtualStickVM.sendVirtualStickAdvancedParam(param)
-//            }
-//        )
-//
-//        Log.d(TAG, "sendVirtualStickParameters: picth2")
-//        sendVirtualStickParameters(5.0, 0.0,5.0,180.0,0.0,
-//            sendAction = { param ->
-//                virtualStickVM.sendVirtualStickAdvancedParam(param)
-//            }
-//        )
-//
-//        Log.d(TAG, "sendVirtualStickParameters: picth3")
-//        sendVirtualStickParameters(5.0, 0.0,5.0,90.0,0.0,
-//            sendAction = { param ->
-//                virtualStickVM.sendVirtualStickAdvancedParam(param)
-//            }
-//        )
-//
-//        Log.d(TAG, "sendVirtualStickParameters: picth4")
-//        sendVirtualStickParameters(5.0, 0.0,5.0,-45.0,
-//            sendAction = { param ->
-//                virtualStickVM.sendVirtualStickAdvancedParam(param)
-//            }
-//        )
-//
-
+        // 调试测试
+//        sendVirtualStickParametersTest()
     }
 
-    suspend fun moveDroneToPoint(start: DJILatLng, end: DJILatLng , droneLastAzimuth:Double= 0.0, resultValue:Double = 0.0):Double{
+    suspend fun  sendVirtualStickParametersTest(){
+        Log.d(TAG, "sendVirtualStickParameters: picth")
+        sendVirtualStickParameters(5.0, 0.0,5.0,0.0)
+
+        Log.d(TAG, "sendVirtualStickParameters: picth2")
+        sendVirtualStickParameters(5.0, 0.0,5.0,180.0,0.0)
+
+        Log.d(TAG, "sendVirtualStickParameters: picth3")
+        sendVirtualStickParameters(5.0, 0.0,5.0,90.0,0.0)
+
+        Log.d(TAG, "sendVirtualStickParameters: picth4")
+        sendVirtualStickParameters(5.0, 0.0,5.0,-45.0)
+    }
+
+    /**
+     * 按照当前位置和目标位置计算方向和距离，控制无人机向该方向飞行该距离
+     * @param start DJI经纬度坐标 DJIDJILatLng(lat, lon)
+     * @param end DJI经纬度坐标 DJIDJILatLng(lat, lon)
+     * @param droneLastAzimuth 上一次的无人机方向，用于本次方向调整
+     * @param adjustHeight 需要控制无人机调整的高度
+     * @return 当前无人机方向
+     */
+    suspend fun moveDroneToPoint(start: DJILatLng, end: DJILatLng , droneLastAzimuth:Double= 0.0, adjustHeight:Double = 0.0):Double{
         // 计算两点之间的距离和方位角
         var distance = DJIGpsUtils.distance(start, end)*100/100
         distance = (distance* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
@@ -975,76 +937,38 @@ class WayPointV3Fragment : DJIFragment() {
         if (azimuth > 180) {
             azimuth -= 360
         }
-        Log.d(TAG, "azimuth2：$azimuth")
+        Log.d(TAG, "moveDroneToPoint：azimuth $azimuth")
 
         // 计算飞行时间
         val time = (distance / kmlSpeed) // 将飞行时间转换为 Int
-        var verticalSpeed = resultValue/time // 垂直速度分量
+        var verticalSpeed = adjustHeight/time // 垂直速度分量
         verticalSpeed = (verticalSpeed* 10).roundToInt() / 10.0    //  保留一位小数，四舍五入
 
         // 判断 azimuth 与 globalAzimuth 的差值是否小于 1
         if (abs(azimuth - droneLastAzimuth) < 1) {
             // 差值小于 1，直接运行一次
             // 发送虚拟杆参数：azimuth控制无人机朝向，即镜头方向。northSpeed（东西）和eastSpeed（南北）控制路线（以镜头方向为正北方向）
-            sendVirtualStickParameters(time, 0.0,kmlSpeed,azimuth,verticalSpeed,
-                sendAction = { param ->
-                    virtualStickVM.sendVirtualStickAdvancedParam(param)
-                }
-            )
+            sendVirtualStickParameters(time, 0.0,kmlSpeed,azimuth,verticalSpeed)
         } else {
             // 发送虚拟杆参数，修改方位
-            Log.d(TAG, "azimuth3：$azimuth")
-            sendVirtualStickParameters(1.0, 0.0,0.0,azimuth,
-                sendAction = { param ->
-                    virtualStickVM.sendVirtualStickAdvancedParam(param)
-                }
-            )
+            Log.d(TAG, "moveDroneToPoint：调整方向")
+            sendVirtualStickParameters(1.0, 0.0,0.0,azimuth)
             // 发送虚拟杆参数
-            Log.d(TAG, "azimuth4：$azimuth")
-            sendVirtualStickParameters(time, 0.0,kmlSpeed,azimuth,verticalSpeed,
-                sendAction = { param ->
-                    virtualStickVM.sendVirtualStickAdvancedParam(param)
-                }
-            )
+            Log.d(TAG, "moveDroneToPoint：进行飞行")
+            sendVirtualStickParameters(time, 0.0,kmlSpeed,azimuth,verticalSpeed)
         }
         return azimuth
     }
 
-    // 计算两点之间的距离（单位：米）
-    fun calculateDistance(start: LatLng, end: LatLng): Double {
-        val startLat = Math.toRadians(start.latitude)
-        val startLng = Math.toRadians(start.longitude)
-        val endLat = Math.toRadians(end.latitude)
-        val endLng = Math.toRadians(end.longitude)
 
-        val dLat = endLat - startLat
-        val dLng = endLng - startLng
-
-        val a = sin(dLat / 2).pow(2) + cos(startLat) * cos(endLat) * sin(dLng / 2).pow(2)
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return EARTH_RADIUS * c
-    }
-
-//    fun calculateDistance(point1: LatLng, point2: LatLng): Double {
-//        val dx = point2.longitude - point1.longitude
-//        val dy = point2.latitude - point1.latitude
-//        return Math.sqrt(dx * dx + dy * dy) * 111000 // 简单近似，每经纬度差值约为111公里
-//    }
-
-
-    // 计算两点之间的方位角（相对于正北方向的顺时针角度，单位：度）
-    fun calculateBearing(start: DJILatLng, end: DJILatLng): Double {
-        val startLat = Math.toRadians(start.latitude)
-        val startLng = Math.toRadians(start.longitude)
-        val endLat = Math.toRadians(end.latitude)
-        val endLng = Math.toRadians(end.longitude)
-
-        val dLng = endLng - startLng
-        val y = sin(dLng) * cos(endLat)
-        val x = cos(startLat) * sin(endLat) - sin(startLat) * cos(endLat) * cos(dLng)
-        return (Math.toDegrees(atan2(y, x)) + 360) % 360 // 确保方位角为 0~360 度
-    }
-
+    /**
+     * 控制无人机按照命令运行
+     * @param durationInSeconds 命令持续时间
+     * @param pitch 无人机左右移动速度，右为正值
+     * @param roll 无人机前后移动速度，前为正值
+     * @param yaw 无人机上下移动速度，上为正值
+     * @return 运行后无人机朝向
+     */
     suspend fun sendVirtualStickParameters(
         durationInSeconds: Double = 1.0,
         pitch: Double = 0.0,
@@ -1055,7 +979,9 @@ class WayPointV3Fragment : DJIFragment() {
         rollPitchControlMode: RollPitchControlMode = RollPitchControlMode.VELOCITY,
         yawControlMode: YawControlMode = YawControlMode.ANGLE,
         rollPitchCoordinateSystem: FlightCoordinateSystem = FlightCoordinateSystem.BODY,
-        sendAction: (VirtualStickFlightControlParam) -> Unit
+        sendAction: (VirtualStickFlightControlParam) -> Unit = { param ->
+            virtualStickVM.sendVirtualStickAdvancedParam(param) // 默认实现
+        }
     ) {
         var times= Math.ceil(durationInSeconds / 0.2).toInt()
         repeat( times- 1) { iteration ->
@@ -1070,11 +996,18 @@ class WayPointV3Fragment : DJIFragment() {
                 this.rollPitchCoordinateSystem = rollPitchCoordinateSystem
             }
             sendAction(param)
-//            println("第 ${iteration + 1} 次发送参数：$param")
             delay(200) // 每次间隔指定时间，即5Hz
         }
     }
 
+    /**
+     * 仿地飞行计算
+     * @param path 当前照片路径
+     * @param baseLine 基线距离（相邻照片拍照无人机距离）
+     * @param focalLength 相机焦距
+     * @param pixelDim 相机像元大小
+     * @return 无人机需要调整高度
+     */
     // 使用Suspend挂起，调用Worker类
     suspend fun downloadPhotoSuspend(
         path: String,
@@ -1113,6 +1046,45 @@ class WayPointV3Fragment : DJIFragment() {
         }
     }
 
+    // 调用DJI拍照功能
+    suspend fun performTakePhoto() {
+        // 将回调封装为挂起函数
+        suspendCancellableCoroutine<Unit> { continuation ->
+            mediaVM.takePhoto(object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() {
+                    // 恢复挂起函数，通知调用者任务完成
+                    continuation.resume(Unit)
+                    ToastUtils.showToast("take photo success")
+                }
+
+                override fun onFailure(error: IDJIError) {
+                    // 恢复挂起函数，通知调用者任务失败
+                    continuation.resumeWithException(Exception("Take photo failed: ${error}"))
+                    ToastUtils.showToast("take photo failed")
+                }
+            })
+
+            // 如果协程被取消，停止拍照任务（可选逻辑）
+            continuation.invokeOnCancellation {
+                // 添加取消拍照任务的代码（如果支持）
+            }
+        }
+    }
+
+
+    // 计算两点之间的方位角（相对于正北方向的顺时针角度，单位：度）
+    fun calculateBearing(start: DJILatLng, end: DJILatLng): Double {
+        val startLat = Math.toRadians(start.latitude)
+        val startLng = Math.toRadians(start.longitude)
+        val endLat = Math.toRadians(end.latitude)
+        val endLng = Math.toRadians(end.longitude)
+
+        val dLng = endLng - startLng
+        val y = sin(dLng) * cos(endLat)
+        val x = cos(startLat) * sin(endLat) - sin(startLat) * cos(endLat) * cos(dLng)
+        return (Math.toDegrees(atan2(y, x)) + 360) % 360 // 确保方位角为 0~360 度
+    }
+
     // 封装为函数，返回飞行器的位置
     fun getAircraftLocation(): LocationCoordinate3D {
         return KeyManager.getInstance().getValue(
@@ -1121,6 +1093,7 @@ class WayPointV3Fragment : DJIFragment() {
         )
     }
 
+    // 文本获取更新当前位置
     private fun startUpdatingAircraftLocation() {
         updateJob = CoroutineScope(Dispatchers.Main).launch {
             while (isActive) {
@@ -1141,7 +1114,12 @@ class WayPointV3Fragment : DJIFragment() {
         )
     }
 
-
+    /**
+     * 列出当前文件夹内某一文件类型的文件名
+     * @param folderPath 文件夹路径
+     * @param pattern 匹配的正则表达式
+     * @return 匹配的文件名数组
+     */
     // 封装为函数，设置云台的姿态
     suspend fun performActionGimbalAngleRotation(
         duration: Double = 1.0,
@@ -1372,6 +1350,7 @@ class WayPointV3Fragment : DJIFragment() {
 
     }
 
+    // 如果没有连接无人机进行当前位置定位
     private fun initLocation() {
         // 检查无人机是否已连接
         if (!KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false)) {
@@ -1398,8 +1377,9 @@ class WayPointV3Fragment : DJIFragment() {
 
     var picturearray: Array<String> = arrayOf()  // 初始化为空数组
     var BaseLine: DoubleArray = doubleArrayOf()  // 初始化为空的 Double 数组
-    //  测试读取当前文件下照片
-//    fun takePhoto() {
+    //  测试读取当前文件下照片或基线距离
+    fun loadLocalPhoto() {
+//        // 路径示例：Android/data/cas.igsnrr.dronefly/files/Pictures/DJI/DJI***.jpg
 //        picturearray = getMatchingFileNames(
 //            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/H1",
 //            "^H1.*\\.(jpg|JPG)"
@@ -1412,7 +1392,14 @@ class WayPointV3Fragment : DJIFragment() {
 //        } catch (e: Exception) {
 //            Log.e(TAG, "Error calculating BaseLine", e)
 //        }
-//    }
+
+        pictureArray = getMatchingFileNames(
+            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106",
+            "^Picture_20250103_.*\\.(jpg|JPG)"
+        )
+        ToastUtils.showToast( "DJI开始：${requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106"}")
+
+    }
 
     /** 列出当前文件夹内某一文件类型的文件名
      * @param folderPath
@@ -1497,6 +1484,10 @@ class WayPointV3Fragment : DJIFragment() {
         return BaseLine
     }
 
+    /**
+     * 下载无人机上最新照片
+     * @return 下载后文件位置
+     */
     suspend fun downloadPhotoFixedPath(): String? {
         // 获取文件列表
         mediaVM.pullMediaFileListFromCamera(-1, 1)
@@ -2074,23 +2065,7 @@ class WayPointV3Fragment : DJIFragment() {
                 wayline_aircraft_speed?.text = String.format("Aircraft Speed: %.2f", it.speed)
             }
         }
-
-        // 获取外部存储路径中的某一文件夹中的满足某一条件文件名的文件名数组。需手动放置数据
-        // 路径示例：Android/data/cas.igsnrr.dronefly/files/Pictures/DJI/DJI***.jpg
-//        pictureArray = getMatchingFileNames(
-//            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20241025",
-//            "^DJI_20241025.*\\.(jpg|JPG)"
-//        )
-//        ToastUtils.showToast( "DJI开始：${requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20241025"}")
-
-        pictureArray = getMatchingFileNames(
-            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106",
-            "^Picture_20250103_.*\\.(jpg|JPG)"
-        )
-        ToastUtils.showToast( "DJI开始：${requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106"}")
     }
-
-
 
     @IntDef(
         MapProvider.MAP_AUTO,

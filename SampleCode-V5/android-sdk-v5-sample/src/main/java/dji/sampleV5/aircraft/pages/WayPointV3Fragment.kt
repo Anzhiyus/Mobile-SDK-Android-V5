@@ -4,12 +4,15 @@ package dji.sampleV5.aircraft.pages
 import android.annotation.SuppressLint
 import android.app.Activity.RESULT_OK
 import android.app.AlertDialog
+import android.app.Dialog
 import android.content.Context
 import android.content.DialogInterface
 import android.content.DialogInterface.OnMultiChoiceClickListener
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.location.Location
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -22,11 +25,14 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.*
 import androidx.annotation.IntDef
+import androidx.core.content.ContextCompat.getSystemService
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.work.*
+import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
 import com.dji.industry.mission.DocumentsUtils
 import com.dji.wpmzsdk.common.data.HeightMode
@@ -80,9 +86,12 @@ import dji.v5.utils.common.*
 import dji.v5.utils.common.DeviceInfoUtil.getPackageName
 import dji.v5.ux.accessory.DescSpinnerCell
 import dji.v5.ux.map.MapWidget
+import dji.v5.ux.mapkit.core.camera.DJICameraUpdate
+import dji.v5.ux.mapkit.core.camera.DJICameraUpdateFactory
 import dji.v5.ux.mapkit.core.maps.DJIMap
 import dji.v5.ux.mapkit.core.models.DJIBitmapDescriptor
 import dji.v5.ux.mapkit.core.models.DJIBitmapDescriptorFactory
+import dji.v5.ux.mapkit.core.models.DJICameraPosition
 import dji.v5.ux.mapkit.core.models.DJILatLng
 import dji.v5.ux.mapkit.core.models.annotations.DJIMarker
 import dji.v5.ux.mapkit.core.models.annotations.DJIMarkerOptions
@@ -96,6 +105,7 @@ import kotlinx.android.synthetic.main.dialog_add_waypoint.view.*
 import kotlinx.android.synthetic.main.frag_virtual_stick_page.simulator_state_info_tv
 import kotlinx.android.synthetic.main.frag_virtual_stick_page.widget_horizontal_situation_indicator
 import kotlinx.android.synthetic.main.frag_waypointv3_page.*
+import kotlinx.android.synthetic.main.spf_dialog_waylineplan.*
 import kotlinx.android.synthetic.main.spf_frag_waypointv3_page.map_widget
 import kotlinx.android.synthetic.main.view_mission_setting_home.*
 import kotlinx.coroutines.*
@@ -191,8 +201,9 @@ class WayPointV3Fragment : DJIFragment() {
 
     private var updateJob: Job? = null
 
-    // 地图绘制类
-    var maptool: DJIMapTool? = null
+
+
+
 
     // 判断OpenCV是否加载成功
     private val loaderCallback: BaseLoaderCallback = object : BaseLoaderCallback(context) {
@@ -261,9 +272,10 @@ class WayPointV3Fragment : DJIFragment() {
         i = 0
 
         // 实例化航线绘制工具
+        initWayLinePlan()
 
-        // 实例化航线绘制工具
-        maptool = DJIMapTool(map_widget.map ,activity)
+        // 如果没有无人机，初始化位置为当前位置
+        initLocation()
 
     }
 
@@ -599,51 +611,77 @@ class WayPointV3Fragment : DJIFragment() {
             }
         }
 
-        // 航线规划
+//        // 航线规划
+//        btn_waylineplan_spf.setOnClickListener {
+////            maptool?.OpenTool(DJIMapTool.TOOL_DRAWAREA)
+//        }
+
         btn_waylineplan_spf.setOnClickListener {
-            maptool?.OpenTool(DJIMapTool.TOOL_DRAWAREA)
+            Log.d("DialogDebug", "Button clicked. wayLinePlanDialogIsVisible: $wayLinePlanDialogIsVisible")
+
+            if (wayLinePlanDialogIsVisible) {
+                Log.d("DialogDebug", "Dismiss dialog")
+                wayLinePlanDialog?.dismiss() // 隐藏对话框
+                wayLinePlanDialogIsVisible = false // 更新对话框显示状态
+            } else {
+                Log.d("DialogDebug", "Show dialog")
+                // 检查 wayLinePlanDialog 是否为空
+                if (wayLinePlanDialog == null) {
+                    Log.e("DialogDebug", "wayLinePlanDialog is null")
+                } else {
+                    Log.d("DialogDebug", "wayLinePlanDialog is not null")
+                }
+
+                try {
+                    wayLinePlanDialog?.show() // 显示对话框
+                    wayLinePlanDialogIsVisible = true // 更新对话框显示状态
+                } catch (e: Exception) {
+                    Log.e("DialogDebug", "Error showing dialog: ${e.message}")
+                }
+            }
         }
 
-        // 导出kml
-        btn_output_kml_spf.setOnClickListener {
-            var flyspeed = 5.0
-            var flyWaypointDistance = 50.0
-            var flyheight = 50.0
 
-            // 输出航线端点坐标
-            val routeLinePoints: List<DJILatLng> = maptool?.getPointsFlyLines()?.filterNotNull()?.toList() ?: emptyList()
-            Log.d(TAG, "routeLinePoints:$routeLinePoints")
-            // 根据速度、航线长度、计算航线运行时间
-            // 根据速度、航线长度、计算航线运行时间
-            val routeLength: Double = maptool?.calculateTotalRouteLength(routeLinePoints)?: 0.0
-            var routeTime: Double = routeLength / flyspeed / 60
-            routeTime = (Math.round(routeTime * 100.0f) / 100.0f).toDouble()
-//            tv_flyTime.setText(routeTime.toString())
-            Toast.makeText(context, "航线预计运行min:$routeTime", Toast.LENGTH_SHORT).show()
-
-            // 航点间距
-//            flyWaypointDistance = tv_pointSpace.getText().toString().toFloat()
-            flyWaypointDistance = (Math.round(flyWaypointDistance * 100) / 100).toDouble()
-
-            // 根据航线端点，航点间距，计算航点坐标
-            routePoints = maptool?.generateIntermediatePoints(routeLinePoints, flyWaypointDistance)?.filterNotNull()?.toList() ?: emptyList()
-
-            // 输出航点坐标为kml文件
-            // 将数据存储到 requestDataMap 中
-            val kmlData: MutableMap<String, Any> = ConcurrentHashMap()
-            flyheight = (Math.round(flyheight * 100) / 100).toDouble()
-            flyspeed = (Math.round(flyspeed * 100) / 100).toDouble()
-            routeTime = (Math.round(routeTime * 100) / 100).toDouble()
-
-            kmlData["points"] = routePoints // 存储 LatLng 列表
-            kmlData["height"] = flyheight // 存储高度
-            kmlData["speed"] = flyspeed // 存储速度
-            kmlData["time"] = routeTime // 飞行时间min
-            kmlData["waypointDistance"] = flyWaypointDistance // 航点间距
-
-            saveKMLFileWithCustomPath(kmlData)
-            Toast.makeText(context, "成功导出航线为kml文件", Toast.LENGTH_SHORT).show()
-        }
+//        // 导出kml
+//        btn_output_kml_spf.setOnClickListener {
+//            var flyspeed = 5.0
+//            var flyWaypointDistance = 50.0
+//            var flyheight = 50.0
+//
+//            // 输出航线端点坐标
+//            val routeLinePoints: List<DJILatLng> = maptool?.getPointsFlyLines()?.filterNotNull()?.toList() ?: emptyList()
+//            Log.d(TAG, "routeLinePoints:$routeLinePoints")
+//            // 根据速度、航线长度、计算航线运行时间
+//            // 根据速度、航线长度、计算航线运行时间
+//            val routeLength: Double = maptool?.calculateTotalRouteLength(routeLinePoints)?: 0.0
+//            var routeTime: Double = routeLength / flyspeed / 60
+//            routeTime = (Math.round(routeTime * 100.0f) / 100.0f).toDouble()
+////            tv_flyTime.setText(routeTime.toString())
+//            Toast.makeText(context, "航线预计运行min:$routeTime", Toast.LENGTH_SHORT).show()
+//
+//            // 航点间距
+////            flyWaypointDistance = tv_pointSpace.getText().toString().toFloat()
+//            flyWaypointDistance = (Math.round(flyWaypointDistance * 100) / 100).toDouble()
+//
+//            // 根据航线端点，航点间距，计算航点坐标
+//            routePoints = maptool?.generateIntermediatePoints(routeLinePoints, flyWaypointDistance)?.filterNotNull()?.toList() ?: emptyList()
+//
+//            // 输出航点坐标为kml文件
+//            // 将数据存储到 requestDataMap 中
+//            val kmlData: MutableMap<String, Any> = ConcurrentHashMap()
+//            flyheight = (Math.round(flyheight * 100) / 100).toDouble()
+//            flyspeed = (Math.round(flyspeed * 100) / 100).toDouble()
+//            routeTime = (Math.round(routeTime * 100) / 100).toDouble()
+//
+//            kmlData["points"] = routePoints // 存储 LatLng 列表
+//            kmlData["height"] = flyheight // 存储高度
+//            kmlData["speed"] = flyspeed // 存储速度
+//            kmlData["time"] = routeTime // 飞行时间min
+//            kmlData["waypointDistance"] = flyWaypointDistance // 航点间距
+//
+//            saveKMLFileWithCustomPath(kmlData)
+//            Toast.makeText(context, "成功导出航线为kml文件", Toast.LENGTH_SHORT).show()
+//        }
 
 
     }
@@ -1193,10 +1231,174 @@ class WayPointV3Fragment : DJIFragment() {
         editor.apply() // 或者使用 editor.commit()，取决于你是否需要同步
     }
 
+    // 航线规划相关
+    // 地图绘制类
+    var maptool: DJIMapTool? = null
+    var wayLinePlanDialog: Dialog? = null
+    var wayLinePlanDialogIsVisible = false // 对话框显示状态变量
+
+    private fun initWayLinePlan() {
+        // 实例化航线绘制工具
+        maptool = DJIMapTool(map_widget.map ,activity)
+
+        // 实例化航线规划对话框
+        wayLinePlanDialog = Dialog(requireContext())
+        wayLinePlanDialog?.setContentView(R.layout.spf_dialog_waylineplan)
+        wayLinePlanDialog?.setCancelable(false)
+        wayLinePlanDialog?.setCanceledOnTouchOutside(false)
+        // 设置对话框，将对话框独立出来，可拖动
+        val window = wayLinePlanDialog?.window
+        val layoutParams = window?.attributes
+        layoutParams?.apply {
+            flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+            dimAmount = 0.5f
+        }
+        window?.attributes = layoutParams
+
+        Log.d(TAG, "wayLinePlanDialog")
+
+        // 组件初始化
+        // 相机参数
+        val focallength = wayLinePlanDialog?.findViewById<EditText>(R.id.focal)
+        val opticalFormat = wayLinePlanDialog?.findViewById<EditText>(R.id.opticalFormat)
+        val parallelimage = wayLinePlanDialog?.findViewById<EditText>(R.id.imagewidth)
+        val adjacentverimage = wayLinePlanDialog?.findViewById<EditText>(R.id.imageheight)
+        // 旁向重叠度
+        val parallellapping = wayLinePlanDialog?.findViewById<EditText>(R.id.et_parallellapping)
+        // 地面分辨率
+        val gsd = wayLinePlanDialog?.findViewById<EditText>(R.id.et_gsd)
+        // 飞行速度
+        val flyspeed = wayLinePlanDialog?.findViewById<EditText>(R.id.et_speed)
+        // 航向重叠度
+        val adjacentverlapping = wayLinePlanDialog?.findViewById<EditText>(R.id.et_adjacentverlapping)
+
+        val tv_flyHeight = wayLinePlanDialog?.findViewById<TextView>(R.id.tv_flyHeight)
+        val tv_lineSpace = wayLinePlanDialog?.findViewById<TextView>(R.id.tv_lineSpace)
+        val tv_pointSpace = wayLinePlanDialog?.findViewById<TextView>(R.id.tv_pointSpace)
+
+        val line_angle_et = wayLinePlanDialog?.findViewById<EditText>(R.id.line_angle_et)
+        val line_space_et = wayLinePlanDialog?.findViewById<EditText>(R.id.line_space_et)
+
+        val btn_calculate = wayLinePlanDialog?.findViewById<Button>(R.id.btn_calculate)
+        val draw_start = wayLinePlanDialog?.findViewById<Button>(R.id.draw_start)
+        val draw_delete = wayLinePlanDialog?.findViewById<Button>(R.id.draw_delete)
+        val output_route = wayLinePlanDialog?.findViewById<Button>(R.id.output_route)
+
+        btn_calculate?.setOnClickListener(){
+            Log.d(TAG, "btn_calculate")
+            var parallellapping_num = parallellapping?.text.toString().toDouble()/100
+            var gsd_num = gsd?.text.toString().toDouble()/100
+            var parallelimage_num = parallelimage?.text.toString().toDouble()
+            var adjacentverlapping_num = adjacentverlapping?.text.toString().toDouble()/100
+            var adjacentverimage_num = adjacentverimage?.text.toString().toDouble()
+            var focallength_num = focallength?.text.toString().toDouble()
+            var opticalFormat_num = opticalFormat?.text.toString().toDouble()
+
+            // 航线间距计算
+            var spacing = (1 - parallellapping_num) * (gsd_num * parallelimage_num)
+            spacing = (Math.round(spacing * 100.0) / 100.0)
+
+            // 航点间距计算
+            var pointspacing = (1 - adjacentverlapping_num) * (gsd_num * adjacentverimage_num)
+            pointspacing = (Math.round(pointspacing * 100.0) / 100.0)
+            // 飞行高度计算
+            var flyheight = 1000 * focallength_num * gsd_num / opticalFormat_num
+            flyheight = (Math.round(flyheight * 100.0) / 100.0)
+
+            // 更新 UI
+            tv_flyHeight?.text = String.format("%.2f", flyheight)
+            tv_lineSpace?.text = String.format("%.2f", spacing)
+            tv_pointSpace?.text = String.format("%.2f", pointspacing)
+
+            // 更新航线
+            line_space_et?.setText(spacing.toString())
+            maptool?.UpdateWayLines(
+                line_angle_et?.text.toString().toInt(),
+                line_space_et?.text.toString().toDouble()
+            )
+
+        }
+
+        draw_start?.setOnClickListener(){
+            maptool?.OpenTool(DJIMapTool.TOOL_DRAWAREA)
+            if (wayLinePlanDialogIsVisible) {
+                wayLinePlanDialog?.dismiss() // 隐藏对话框
+                wayLinePlanDialogIsVisible = false // 更新对话框显示状态
+            }
+        }
+        draw_delete?.setOnClickListener(){
+            maptool?.ClearAll()
+        }
+        output_route?.setOnClickListener(){
+            var flyspeed = 5.0
+            var flyWaypointDistance = 50.0
+            var flyheight = 50.0
+
+            // 输出航线端点坐标
+            val routeLinePoints: List<DJILatLng> = maptool?.getPointsFlyLines()?.filterNotNull()?.toList() ?: emptyList()
+            Log.d(TAG, "routeLinePoints:$routeLinePoints")
+            // 根据速度、航线长度、计算航线运行时间
+            // 根据速度、航线长度、计算航线运行时间
+            val routeLength: Double = maptool?.calculateTotalRouteLength(routeLinePoints)?: 0.0
+            var routeTime: Double = routeLength / flyspeed / 60
+            routeTime = (Math.round(routeTime * 100.0f) / 100.0f).toDouble()
+//            tv_flyTime.setText(routeTime.toString())
+            Toast.makeText(context, "航线预计运行min:$routeTime", Toast.LENGTH_SHORT).show()
+
+            // 航点间距
+//            flyWaypointDistance = tv_pointSpace.getText().toString().toFloat()
+            flyWaypointDistance = (Math.round(flyWaypointDistance * 100) / 100).toDouble()
+
+            // 根据航线端点，航点间距，计算航点坐标
+            routePoints = maptool?.generateIntermediatePoints(routeLinePoints, flyWaypointDistance)?.filterNotNull()?.toList() ?: emptyList()
+
+            // 输出航点坐标为kml文件
+            // 将数据存储到 requestDataMap 中
+            val kmlData: MutableMap<String, Any> = ConcurrentHashMap()
+            flyheight = (Math.round(flyheight * 100) / 100).toDouble()
+            flyspeed = (Math.round(flyspeed * 100) / 100).toDouble()
+            routeTime = (Math.round(routeTime * 100) / 100).toDouble()
+
+            kmlData["points"] = routePoints // 存储 LatLng 列表
+            kmlData["height"] = flyheight // 存储高度
+            kmlData["speed"] = flyspeed // 存储速度
+            kmlData["time"] = routeTime // 飞行时间min
+            kmlData["waypointDistance"] = flyWaypointDistance // 航点间距
+
+            saveKMLFileWithCustomPath(kmlData)
+            Toast.makeText(context, "成功导出航线为kml文件", Toast.LENGTH_SHORT).show()
+        }
+
+
+    }
+
+    private fun initLocation() {
+        // 检查无人机是否已连接
+        if (!KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false)) {
+            val locationManager =  requireContext().getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            try {
+                // 获取 GPS 或网络提供的位置
+                val location: Location? = locationManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+
+                if (location != null) {
+                    val cameraPosition = DJICameraPosition(DJILatLng(location.latitude,location.longitude), 15.0f, 0.0f, 0.0f)
+                    var cameraUpdate: DJICameraUpdate? = null
+                    cameraUpdate = DJICameraUpdateFactory.newCameraPosition(cameraPosition)
+                    map_widget.map?.moveCamera(cameraUpdate)
+                } else {
+
+                }
+            } catch (e: SecurityException) {
+                e.printStackTrace()
+            }
+
+        }
+    }
+
 
     var picturearray: Array<String> = arrayOf()  // 初始化为空数组
     var BaseLine: DoubleArray = doubleArrayOf()  // 初始化为空的 Double 数组
-
+    //  测试读取当前文件下照片
 //    fun takePhoto() {
 //        picturearray = getMatchingFileNames(
 //            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/H1",

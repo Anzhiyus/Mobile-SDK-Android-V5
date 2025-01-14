@@ -226,6 +226,11 @@ public class DJIMapTool {
         LoadWayLines(points);
     }
 
+    public void UpdateWayLines(int rotate,double space){
+        opts.rotate=rotate;
+        opts.space=space;
+    }
+
     //由航飞区域顶点标志获取航飞区域顶点，
     public List<DJILatLng> getPointsFromMarkers(List<DJIMarker> markers){
         List<DJILatLng> points = new ArrayList<DJILatLng>();
@@ -234,6 +239,7 @@ public class DJIMapTool {
         }
         return points;
     }
+
 
     // 更新航线
     private void LoadWayLines(List<DJILatLng> points){

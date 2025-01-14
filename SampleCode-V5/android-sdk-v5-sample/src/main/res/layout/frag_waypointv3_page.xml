@@ -9,6 +9,9 @@
 
 
 
+
+
+
     <dji.v5.ux.core.widget.hsi.HorizontalSituationIndicatorWidget
         android:id="@+id/widget_horizontal_situation_indicator"
         android:layout_width="350dp"
@@ -26,6 +29,7 @@
         app:layout_constraintStart_toEndOf="@+id/waypoint_button_list"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintWidth_percent="0.85">
+
 
         <FrameLayout
             android:id="@+id/main_window"
@@ -499,7 +503,6 @@
         android:src="@mipmap/ic_map_osd_locate"
         android:layout_marginRight="8dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="@+id/map_widget"
         app:layout_constraintTop_toTopOf="parent" />
 
     <androidx.constraintlayout.widget.ConstraintLayout

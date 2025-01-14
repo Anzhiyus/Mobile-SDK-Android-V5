@@ -1,0 +1,506 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView  xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:orientation="vertical"
+    >
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:padding="5dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="25dp"
+            android:layout_marginLeft="10dp"
+            android:gravity="bottom"
+            android:text="相机参数："
+            android:textSize="18sp" />
+
+        <LinearLayout
+            android:textSize="16sp"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:orientation="horizontal"
+            android:layout_width="wrap_content"
+            android:layout_height="39dp">
+
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="相机焦距"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/focal"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:inputType="numberDecimal"
+                android:maxLength="10"
+                android:text="12.29" />
+
+            <TextView
+                android:layout_width="25dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center|left"
+                android:text="mm" />
+
+
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:layout_marginLeft="20dp"
+                android:gravity="center|left"
+                android:text="像元尺寸"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/opticalFormat"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:imeOptions="actionDone"
+                android:inputType="numberDecimal"
+                android:text="3.30"/>
+            <TextView
+                android:layout_width="25dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center|left"
+                android:text="μm" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:textSize="16sp"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:orientation="horizontal"
+            android:layout_width="wrap_content"
+            android:layout_height="39dp">
+
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="相机宽度"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/imagewidth"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:inputType="numberDecimal"
+                android:maxLength="10"
+                android:text="5280" />
+
+            <TextView
+                android:layout_width="25dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center|left"
+                android:text="" />
+
+
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:layout_marginLeft="20dp"
+                android:gravity="center|left"
+                android:text="相机高度"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/imageheight"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:imeOptions="actionDone"
+                android:inputType="numberDecimal"
+                android:text="3956"/>
+            <TextView
+                android:layout_width="25dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center|left"
+                android:text="" />
+
+
+        </LinearLayout>
+
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#CCCCCC"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="25dp"
+            android:layout_marginLeft="10dp"
+            android:gravity="bottom"
+            android:text="航拍要求："
+            android:textSize="18sp" />
+
+        <LinearLayout
+            android:textSize="16sp"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:orientation="horizontal"
+            android:layout_width="wrap_content"
+            android:layout_height="39dp">
+
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="航向重叠度"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/et_adjacentverlapping"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:imeOptions="actionDone"
+                android:inputType="number"
+                android:text="80"/>
+
+            <TextView
+                android:layout_width="25dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="%" />
+
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:layout_marginLeft="20dp"
+                android:gravity="center|left"
+                android:text="旁向重叠度"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/et_parallellapping"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:imeOptions="actionDone"
+                android:inputType="number"
+                android:text="75"/>
+
+            <TextView
+                android:layout_width="15dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="%" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:textSize="16sp"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:orientation="horizontal"
+            android:layout_width="wrap_content"
+            android:layout_height="39dp">
+
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:imeOptions="actionDone"
+                android:text="地面分辨率"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/et_gsd"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:imeOptions="actionDone"
+                android:inputType="numberDecimal"
+                android:text="3"/>
+            <TextView
+                android:gravity="center|left"
+                android:text="cm"
+                android:layout_width="25dp"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:layout_marginLeft="20dp"
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:imeOptions="actionDone"
+                android:text="飞行速度"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/et_speed"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:imeOptions="actionDone"
+                android:inputType="numberDecimal"
+                android:text="5.0"/>
+            <TextView
+                android:gravity="center|left"
+                android:text="m/s"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginBottom="4dp"
+            android:layout_marginLeft="10dp"
+            >
+            <Button
+                android:layout_width="80dp"
+                android:layout_height="wrap_content"
+                android:text="航线角度"
+                android:id="@+id/line_angle_btn"
+                android:textColor="@color/black"
+                />
+
+            <EditText
+                android:id="@+id/line_angle_et"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:layout_gravity="right"
+                android:gravity="center"
+                android:inputType="numberDecimal"
+                android:maxLength="10"
+                android:text="90" />
+
+            <TextView
+                android:layout_width="25dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="度" />
+
+            <Button
+                android:layout_marginLeft="20dp"
+                android:layout_width="80dp"
+                android:layout_height="wrap_content"
+                android:text="航线间隔"
+                android:id="@+id/line_space_btn"
+                android:textColor="@color/black"
+                />
+            <EditText
+                android:layout_width="65dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="right"
+                android:id="@+id/line_space_et"
+                android:text="1000"
+                android:maxLength="10"
+                android:gravity="center"
+                android:inputType="numberDecimal"
+                />
+
+            <TextView
+                android:layout_width="50dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="m" />
+
+        </LinearLayout>
+
+
+
+
+
+
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="10dp"
+            android:background="#CCCCCC"
+            android:layout_marginBottom="10dp"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="25dp"
+            android:layout_marginLeft="10dp"
+            android:gravity="bottom"
+            android:text="输出参数："
+            android:textSize="18sp" />
+
+
+        <LinearLayout
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:orientation="horizontal"
+            android:layout_width="wrap_content"
+            android:layout_height="30dp">
+
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="航线间距"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/tv_lineSpace"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="0"
+                android:textSize="16sp" />
+            <TextView
+                android:gravity="center|left"
+                android:text="m"
+                android:layout_width="25dp"
+                android:layout_height="match_parent" />
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="航点间距"
+                android:textSize="16sp"
+                android:layout_marginLeft="20dp"/>
+            <TextView
+                android:id="@+id/tv_pointSpace"
+                android:layout_width="65dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="0"
+                android:textSize="16sp" />
+            <TextView
+                android:gravity="center|left"
+                android:text="m"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:orientation="horizontal"
+            android:layout_width="wrap_content"
+            android:layout_height="30dp">
+
+            <TextView
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="飞行高度"
+                android:textSize="16sp" />
+            <TextView
+                android:textSize="16sp"
+                android:id="@+id/tv_flyHeight"
+                android:gravity="center|left"
+                android:layout_width="65dp"
+                android:text="0"
+                android:layout_height="match_parent" />
+            <TextView
+                android:gravity="center|left"
+                android:text="m"
+                android:layout_width="25dp"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:layout_marginLeft="20dp"
+                android:layout_width="80dp"
+                android:layout_height="match_parent"
+                android:gravity="center|left"
+                android:text="飞行时间"
+                android:textSize="16sp" />
+            <TextView
+                android:textSize="16sp"
+                android:id="@+id/tv_flyTime"
+                android:gravity="center|left"
+                android:layout_width="65dp"
+                android:text="0"
+                android:layout_height="match_parent" />
+            <TextView
+                android:gravity="center|left"
+                android:text="min"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:gravity="center"
+            android:layout_height="50dp">
+
+            <Button
+                android:id="@+id/btn_calculate"
+                android:layout_width="100dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="参数计算"
+                android:textColor="@color/black" />
+
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#CCCCCC"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="25dp"
+            android:layout_marginLeft="10dp"
+            android:gravity="bottom"
+            android:text="航线绘制："
+            android:textSize="18sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:gravity="center"
+            android:layout_marginTop="1dp">
+            <Button
+                android:layout_width="100dp"
+                android:layout_height="50dp"
+                android:text="开始绘制"
+                android:id="@+id/draw_start"
+                android:textColor="@color/black"
+                android:layout_marginRight="5dp"
+                />
+            <Button
+                android:layout_width="100dp"
+                android:layout_height="50dp"
+                android:text="清除绘制"
+                android:id="@+id/draw_delete"
+                android:textColor="@color/black"
+                android:layout_marginRight="5dp"
+                />
+            <Button
+                android:layout_width="100dp"
+                android:layout_height="50dp"
+                android:text="导出航线"
+                android:id="@+id/output_route"
+                android:textColor="@color/black"
+                />
+        </LinearLayout>
+
+    </LinearLayout>
+
+
+
+
+
+<!--    <TextView-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:layout_marginTop="4dp"-->
+<!--        android:text="*界面可拖动，再次点击图标隐藏"-->
+<!--        android:layout_gravity="right"-->
+<!--        android:textSize="10dp"-->
+<!--        android:textColor="#AAAAAA">-->
+<!--    </TextView>-->
+
+</ScrollView >

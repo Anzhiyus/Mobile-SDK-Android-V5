@@ -412,6 +412,14 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintLeft_toRightOf ="@+id/btn_waylineplan_spf" />
 
+    <dji.v5.ux.core.widget.remotecontrollersignal.RemoteControllerSignalWidget
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/btn_output_kml_spf"
+        >
+
+    </dji.v5.ux.core.widget.remotecontrollersignal.RemoteControllerSignalWidget>
 
 
 

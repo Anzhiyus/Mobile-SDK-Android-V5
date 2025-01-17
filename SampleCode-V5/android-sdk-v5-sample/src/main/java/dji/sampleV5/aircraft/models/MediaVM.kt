@@ -342,10 +342,9 @@ class MediaVM : DJIViewModel() {
 
             dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
             currentTime = dateFormat.format(Date())
-            val filePath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/Picture_$currentTime.jpg")
 
 //            val filePath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/" + "DroneFlyDownLoad.jpg")
-            val file = File(filePath)
+            val file = File(dirs,"/Picture_$currentTime.jpg")
             val outputStream = FileOutputStream(file, false) // 覆盖模式
             val bos = BufferedOutputStream(outputStream)
 
@@ -373,7 +372,7 @@ class MediaVM : DJIViewModel() {
                         bos.close()
                         outputStream.close()
                         LogUtils.i("MediaFile", "${mediaFile.fileIndex} download finish")
-                        continuation.resume(filePath, null) // 完成时恢复协程
+                        continuation.resume(file.toString(), null) // 完成时恢复协程
                     } catch (e: IOException) {
                         continuation.resumeWithException(e) // 错误时抛出异常
                     }

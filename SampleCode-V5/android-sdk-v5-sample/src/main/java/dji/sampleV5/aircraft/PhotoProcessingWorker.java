@@ -2,6 +2,8 @@ package dji.sampleV5.aircraft;
 
 import static androidx.core.content.ContentProviderCompat.requireContext;
 
+import static java.lang.Math.abs;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -9,6 +11,7 @@ import android.graphics.BitmapFactory;
 import android.os.Environment;
 import android.util.Log;
 
+import androidx.lifecycle.MutableLiveData;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 import androidx.work.Data;
@@ -21,12 +24,16 @@ import org.opencv.android.Utils;
 import org.opencv.core.DMatch;
 import org.opencv.core.KeyPoint;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfByte;
 import org.opencv.core.MatOfDMatch;
 import org.opencv.core.MatOfKeyPoint;
 import org.opencv.core.Point;
+import org.opencv.core.Scalar;
 import org.opencv.features2d.DescriptorMatcher;
+import org.opencv.features2d.Features2d;
 import org.opencv.features2d.ORB;
 
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -35,14 +42,20 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import dji.v5.utils.common.ContextUtil;
+import dji.v5.utils.common.DiskUtil;
 
 public class PhotoProcessingWorker extends Worker {
     Context context = getApplicationContext(); // 获取 Context
@@ -120,6 +133,9 @@ public class PhotoProcessingWorker extends Worker {
 
         Log.d(TAG, "img1Bitmap分辨率宽: "+img1Bitmap.getWidth());
         Log.d(TAG, "img2Bitmap分辨率高: "+img2Bitmap.getHeight());
+
+
+
         double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
         Log.d(TAG, "idw: "+Math.round(idw * 10) / 10.0 );
         // 数据暂存缓存路径
@@ -149,10 +165,14 @@ public class PhotoProcessingWorker extends Worker {
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString("tempDataPath2", tempDataPath2);
         editor.putFloat("tempDataIdw", (float) tempDataIdw);
+        idwData_Smooth1.add(idw);
+        editor.putString("idwData_Smooth1",doubleListToJson(idwData_Smooth1) );
+        Log.d(TAG, "idw: "+idwData_Smooth1);
 //        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
 //        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
         editor.putString("idwData_KalmanFilter", doubleListToJson(idwData_KalmanFilter));
         editor.apply();
+
 
         // 返回结果
         Data outputData = new Data.Builder()
@@ -160,6 +180,10 @@ public class PhotoProcessingWorker extends Worker {
 //                .putDouble("result_value", Math.round(smoothmean * 10) / 10.0 )
                 .build();
         return Result.success(outputData);
+
+
+
+
     }
 
     /**
@@ -204,6 +228,48 @@ public class PhotoProcessingWorker extends Worker {
         return gson.toJson(list);
     }
 
+    public static String saveBitmapToFile(Bitmap bitmap, String folderName) {
+        // 获取当前时间并格式化为年月日时分秒
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+        String currentTime = dateFormat.format(new Date());
+
+        // 创建保存路径
+        String dirsPath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/" + folderName + "/" + currentTime);
+        File dirs = new File(dirsPath);
+        if (!dirs.exists()) {
+            dirs.mkdirs();
+        }
+
+        // 获取当前时间并格式化为年月日时分秒
+        dateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
+        currentTime = dateFormat.format(new Date());
+
+        // 创建文件路径并准备文件输出流
+        String filePath = dirsPath + "/Picture_" + currentTime + ".jpg";
+        File file = new File(filePath);
+
+        try {
+            FileOutputStream outputStream = new FileOutputStream(file, false);  // 覆盖模式
+            BufferedOutputStream bos = new BufferedOutputStream(outputStream);
+
+            // 将Bitmap压缩为JPEG格式并保存到文件
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, bos);
+            bos.flush();
+            bos.close();
+            outputStream.close();
+
+            Log.i("ImageUtils", "Image saved to " + filePath);
+
+            // 返回保存的路径
+            return filePath;
+
+        } catch (IOException e) {
+            Log.e("ImageUtils", "Error saving image: " + e.getMessage());
+            return null;
+        }
+    }
+
+
     /** 对相邻图像进行特征提取和计算航高
      *
      * @param img1Bitmap ：第一幅图像
@@ -229,6 +295,10 @@ public class PhotoProcessingWorker extends Worker {
 
         // 创建 ORB 特征检测器，和匹配器
         ORB detector = ORB.create();
+        detector.setMaxFeatures(1000);  // 增加特征点的数量，默认500，增加到1000
+        detector.setScaleFactor(1.5f);  // 调整图像缩放因子 1.379f 1.5f
+        detector.setNLevels(8);        // 使用8层金字塔来提高多尺度特征提取
+        detector.setEdgeThreshold(31); // 增大阈值，避免边缘处提取特征
         // 提取特征点和描述符
         detector.detectAndCompute(img1, new Mat(), keypoints1, descriptors1);
         detector.detectAndCompute(img2, new Mat(), keypoints2, descriptors2);
@@ -246,7 +316,21 @@ public class PhotoProcessingWorker extends Worker {
         for (int i = 0; i < matches.size(); i++) {
             if (matches.get(i).rows() > 1) {
                 DMatch[] m = matches.get(i).toArray();
-                if (m[0].distance < ratioThresh * m[1].distance) {
+
+                KeyPoint kp1 = keypoints1.toList().get(m[0].queryIdx);  // 图片1的特征点
+                KeyPoint kp2 = keypoints2.toList().get(m[0].trainIdx);  // 图片2的特征点
+
+                // 图片1的y坐标要大于图片2，x坐标的差值不大于宽度的10%
+                double y1 = kp1.pt.y;
+                double y2 = kp2.pt.y;
+                double x1 = kp1.pt.x;
+                double x2 = kp2.pt.x;
+                boolean b0 = m[0].distance < ratioThresh * m[1].distance;
+                boolean b1 = (y1-y2) > 0;
+                boolean b2 = (y1-y2) < img1Bitmap.getHeight()*0.5;
+                boolean b3 = abs(x1-x2)<img1Bitmap.getWidth()*0.1;
+
+                if ( b0 && b1 && b2 && b3) {
                     goodMatchesList.add(m[0]);
                 }
             }
@@ -255,6 +339,18 @@ public class PhotoProcessingWorker extends Worker {
         // 筛选好的匹配点的d
         MatOfDMatch goodMatches = new MatOfDMatch();
         goodMatches.fromList(goodMatchesList);
+
+
+//        // 使用drawMatches绘制两幅图像和匹配点
+//        Mat outputImg = new Mat();
+//        Features2d.drawMatches(img1, keypoints1, img2, keypoints2, goodMatches, outputImg, new Scalar(0, 255, 0), new Scalar(255, 0, 0), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
+//        // 将Mat转为Bitmap显示在UI中
+//        Bitmap outputBitmap = Bitmap.createBitmap(outputImg.cols(), outputImg.rows(), Bitmap.Config.ARGB_8888);
+//        Utils.matToBitmap(outputImg, outputBitmap);
+//        // 保存图像到文件
+//        saveBitmapToFile(outputBitmap, "ProcessedImages");
+
+
         DMatch[] dmatchArray=goodMatches.toArray();
         KeyPoint[] keyPointArray1 = keypoints1.toArray();
         KeyPoint[] keyPointArray2 = keypoints2.toArray();
@@ -280,7 +376,7 @@ public class PhotoProcessingWorker extends Worker {
             AviationHighPoints[i]=new Point(keyPointArray2[Idx2].pt.x-img2.cols()/2, keyPointArray2[Idx2].pt.y-img2.rows()/2);
             // 距离=焦距*基线/视差   AviationHigh=FocalLength * BaseLine / (Parallax * PixelDim)
             AviationHigh[i]=FocalLength * BaseLine / (Parallax * PixelDim);
-            Log.d(TAG, "Parallax: "+ Parallax*10.0 / 10.0+"AviationHigh[i]: "+ AviationHigh[i]*10.0 / 10.0);
+//            Log.d(TAG, "Parallax: "+ Parallax*10.0 / 10.0+"AviationHigh[i]: "+ AviationHigh[i]*10.0 / 10.0);
 
 //            // 阈值判断
 //            if (AviationHigh[i] < 60) {
@@ -300,11 +396,13 @@ public class PhotoProcessingWorker extends Worker {
         long endTime = System.nanoTime();
         long elapsedTime = endTime - startTime;
 
-        // 航高过滤5%和95%
-//        filterDataInPlace(AviationHigh, AviationHighPoints);
 
         // 根据行高 AviationHigh 和坐标 AviationHighPoints 进行反距离加权
-        double idw = calculateWeight(AviationHigh, AviationHighPoints);
+//        double idw = calculateWeight(AviationHigh, AviationHighPoints);
+
+        double idw = calculateMedian(AviationHigh);
+        Log.d(TAG, "均值: "+ calculateAverage(AviationHigh)+ "  中值："+calculateMedian(AviationHigh));
+
 
         // CSV 文件路径
         String csvFilePath = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106/output.csv";
@@ -531,6 +629,24 @@ public class PhotoProcessingWorker extends Worker {
         }
 
         return sum / array.length;
+    }
+
+    public static double calculateMedian(double[] array) {
+        if (array == null || array.length == 0) {
+            throw new IllegalArgumentException("Array cannot be null or empty");
+        }
+
+        // 排序数组
+        Arrays.sort(array);
+
+        int length = array.length;
+        if (length % 2 == 1) {
+            // 如果数组长度是奇数，返回中间的元素
+            return array[length / 2];
+        } else {
+            // 如果数组长度是偶数，返回中间两个元素的平均值
+            return (array[length / 2 - 1] + array[length / 2]) / 2.0;
+        }
     }
 
     public static void filterDataInPlace(double[] aviationHigh, Point[] aviationHighPoints) {

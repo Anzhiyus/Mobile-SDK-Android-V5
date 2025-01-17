@@ -1,5 +1,7 @@
 package dji.sampleV5.aircraft;
 
+import static dji.sampleV5.aircraft.DroneActivity0.getMatchingFileNames;
+
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -13,6 +15,7 @@ import android.os.Message;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.Spinner;
 import android.widget.Toast;
 
@@ -54,15 +57,36 @@ import dji.sampleV5.aircraft.pages.MediaFragment;
 
 public class DroneActivity extends AppCompatActivity {
 
+    private ImageView imageView; // 显示图像的ImageView
+    private String[] pictureArray;
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_drone);
 
-        // 动态加载 FlyFragment
-        if (savedInstanceState == null) {  // 确保 Fragment 只会添加一次
-            getSupportFragmentManager().beginTransaction()
-                    .replace(R.id.fragment_container, new DroneFlyFragment()) // 假设有一个容器 view 来放置 Fragment
-                    .commit();
+//        // 动态加载 FlyFragment
+//        if (savedInstanceState == null) {  // 确保 Fragment 只会添加一次
+//            getSupportFragmentManager().beginTransaction()
+//                    .replace(R.id.fragment_container, new DroneFlyFragment()) // 假设有一个容器 view 来放置 Fragment
+//                    .commit();
+//        }
+
+        imageView = findViewById(R.id.imageView);
+
+        // 从Intent中获取图像文件路径
+
+        pictureArray = getMatchingFileNames(
+                getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/ProcessedImages",
+                "^Picture_.*\\.(jpg|JPG)"
+        );
+        String filePath = pictureArray[0];
+
+        if (filePath != null) {
+            // 加载图片
+            Bitmap bitmap = BitmapFactory.decodeFile(filePath);
+            if (bitmap != null) {
+                // 设置到ImageView中
+                imageView.setImageBitmap(bitmap);
+            }
         }
 
     }

@@ -259,7 +259,7 @@ class WayPointV3Fragment : DJIFragment() {
 
         mediaVM.init()
 
-//        loadLocalPhoto() // 读取本地文件（计算基线距离）
+        loadLocalPhoto() // 读取本地文件（计算基线距离）
         clearSharedPreferences()
         i = 0
 
@@ -498,31 +498,31 @@ class WayPointV3Fragment : DJIFragment() {
 
         //        // 读取本地文件夹中的数据：
         btn_download_photo_spf.setOnClickListener {
-            // 显示kml航线
-            Log.d(TAG, "Log：航线$routePoints")
-            routePoints.forEach() {
-                maptool?.markPoint(R.mipmap.mission_edit_waypoint_normal, it, "+");  // 创建边界中心点
-//                markWaypoint(DJIGpsUtils.gcj2wgsInChina(it), 0)
-            }
-
-//            Log.d(TAG, "Log：DJI开始")
-//            lifecycleScope.launch {
-//                try {
-//                    for (i in pictureArray.indices) {
-//                        val path = pictureArray[i]
-//                        if (path != null) {
-//                            val resultValue = downloadPhotoSuspend(path, 23.74, 0.01229, 3.3 / 1000 / 1000, requireContext())
-//                            Log.d(TAG, "DJI回调返回的结果: $resultValue")
-//                        } else {
-//                            Log.d(TAG, "DJI回调返回的结果: 下载失败，无法获取路径")
-//                        }
-//                        Log.d(TAG, "for循环：$i")
-//                    }
-//                    Log.d(TAG, "for循环：结束")
-//                } catch (e: Exception) {
-//                    Log.e(TAG, "下载失败: ${e.message}")
-//                }
+//            // 显示kml航线
+//            Log.d(TAG, "Log：航线$routePoints")
+//            routePoints.forEach() {
+//                maptool?.markPoint(R.mipmap.mission_edit_waypoint_normal, it, "+");  // 创建边界中心点
+////                markWaypoint(DJIGpsUtils.gcj2wgsInChina(it), 0)
 //            }
+
+            Log.d(TAG, "Log：DJI开始")
+            lifecycleScope.launch {
+                try {
+                    for (i in pictureArray.indices) {
+                        Log.d(TAG, "for循环：$i")
+                        val path = pictureArray[i]
+                        if (path != null) {
+                            val resultValue = downloadPhotoSuspend(path, 27.75, 0.01229, 3.3 / 1000 / 1000, requireContext())
+                            Log.d(TAG, "DJI回调返回的结果: $resultValue")
+                        } else {
+                            Log.d(TAG, "DJI回调返回的结果: 下载失败，无法获取路径")
+                        }
+                    }
+                    Log.d(TAG, "for循环：结束")
+                } catch (e: Exception) {
+                    Log.e(TAG, "下载失败: ${e.message}")
+                }
+            }
         }
 
 //        // 按钮点击事件：启动任务
@@ -1393,11 +1393,17 @@ class WayPointV3Fragment : DJIFragment() {
 //            Log.e(TAG, "Error calculating BaseLine", e)
 //        }
 
+//        pictureArray = getMatchingFileNames(
+//            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106",
+//            "^Picture_20250103_.*\\.(jpg|JPG)"
+//        )
+//        ToastUtils.showToast( "DJI开始：${requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106"}")
+
         pictureArray = getMatchingFileNames(
-            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106",
-            "^Picture_20250103_.*\\.(jpg|JPG)"
+            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20241025173",
+            "^DJI_2024102517.*\\.(jpg|JPG)"
         )
-        ToastUtils.showToast( "DJI开始：${requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250106"}")
+        ToastUtils.showToast( "DJI开始：${requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20241025173"}")
 
     }
 

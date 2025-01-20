@@ -8,6 +8,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.os.Environment;
 import android.util.Log;
 
@@ -28,6 +30,7 @@ import org.opencv.core.MatOfByte;
 import org.opencv.core.MatOfDMatch;
 import org.opencv.core.MatOfKeyPoint;
 import org.opencv.core.Point;
+import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.features2d.DescriptorMatcher;
 import org.opencv.features2d.Features2d;
@@ -83,6 +86,7 @@ public class PhotoProcessingWorker extends Worker {
         SharedPreferences sharedPreferences = getApplicationContext().getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE);
         String tempDataPath2 = sharedPreferences.getString("tempDataPath2", "kong");
         double tempDataIdw = sharedPreferences.getFloat("tempDataIdw", 0.0f);
+        List<Double>  aviationHighMedian= jsonToDoubleList(sharedPreferences.getString("aviationHighMedian", "[]"));
         List<Double> idwData_Smooth1 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth1", "[]"));
         List<Double> idwData_Smooth2 = jsonToDoubleList(sharedPreferences.getString("idwData_Smooth2", "[]"));
         List<Double> idwData_KalmanFilter = jsonToDoubleList(sharedPreferences.getString("idwData_KalmanFilter", "[]"));
@@ -135,8 +139,9 @@ public class PhotoProcessingWorker extends Worker {
         Log.d(TAG, "img2Bitmap分辨率高: "+img2Bitmap.getHeight());
 
 
+        double idw = processImageORB(img1Bitmap,img2Bitmap, FocalLength, baseLine, PixelDim);
 
-        double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
+//        double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
         Log.d(TAG, "idw: "+Math.round(idw * 10) / 10.0 );
         // 数据暂存缓存路径
 //        tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
@@ -165,9 +170,9 @@ public class PhotoProcessingWorker extends Worker {
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString("tempDataPath2", tempDataPath2);
         editor.putFloat("tempDataIdw", (float) tempDataIdw);
-        idwData_Smooth1.add(idw);
-        editor.putString("idwData_Smooth1",doubleListToJson(idwData_Smooth1) );
-        Log.d(TAG, "idw: "+idwData_Smooth1);
+        aviationHighMedian.add(idw);
+        editor.putString("aviationHighMedian",doubleListToJson(aviationHighMedian) );
+        Log.d(TAG, "aviationHighMedian: "+aviationHighMedian);
 //        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
 //        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
         editor.putString("idwData_KalmanFilter", doubleListToJson(idwData_KalmanFilter));
@@ -180,10 +185,6 @@ public class PhotoProcessingWorker extends Worker {
 //                .putDouble("result_value", Math.round(smoothmean * 10) / 10.0 )
                 .build();
         return Result.success(outputData);
-
-
-
-
     }
 
     /**
@@ -279,6 +280,15 @@ public class PhotoProcessingWorker extends Worker {
      * @param PixelDim ： 像元尺寸
      */
     private double processImageORB(Bitmap img1Bitmap, Bitmap img2Bitmap, double FocalLength, double BaseLine, double PixelDim){
+
+        int bitmapHeight = img1Bitmap.getHeight();
+        int bitmapWidth = img1Bitmap.getWidth();
+
+        // 对图像分割提取
+        // processImageORB(getSubBitmap(img1Bitmap,4,4,0,2,1,2), getSubBitmap(img2Bitmap,4,4,0,2,1,2),
+        img1Bitmap = getSubBitmap(img1Bitmap,4,4,0,2,0,3);
+        img2Bitmap = getSubBitmap(img2Bitmap,4,4,0,2,0,3);
+
         long startTime = System.nanoTime();
         // 距离=焦距*基线/视差   AviationHigh=FocalLength * BaseLine / (Parallax * PixelDim)
         // 图像转换
@@ -325,10 +335,14 @@ public class PhotoProcessingWorker extends Worker {
                 double y2 = kp2.pt.y;
                 double x1 = kp1.pt.x;
                 double x2 = kp2.pt.x;
+                // ORB提取两对特征点进行筛选
                 boolean b0 = m[0].distance < ratioThresh * m[1].distance;
-                boolean b1 = (y1-y2) > 0;
-                boolean b2 = (y1-y2) < img1Bitmap.getHeight()*0.5;
-                boolean b3 = abs(x1-x2)<img1Bitmap.getWidth()*0.1;
+                // 当前无人机向正北飞，即同一点在当前照片y1的坐标大于上一张照片y2
+                boolean b1 = (y1-y2) > 0;;   // >0
+                // 航线重叠率为75%，特征点距离应该为25%。
+                boolean b2 = (y1-y2) < bitmapHeight*0.3;
+                // 当前无人机向正北飞，特征点东西方向应无距离
+                boolean b3 = abs(x1-x2)<bitmapWidth*0.05;
 
                 if ( b0 && b1 && b2 && b3) {
                     goodMatchesList.add(m[0]);
@@ -341,14 +355,14 @@ public class PhotoProcessingWorker extends Worker {
         goodMatches.fromList(goodMatchesList);
 
 
-//        // 使用drawMatches绘制两幅图像和匹配点
-//        Mat outputImg = new Mat();
-//        Features2d.drawMatches(img1, keypoints1, img2, keypoints2, goodMatches, outputImg, new Scalar(0, 255, 0), new Scalar(255, 0, 0), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
-//        // 将Mat转为Bitmap显示在UI中
-//        Bitmap outputBitmap = Bitmap.createBitmap(outputImg.cols(), outputImg.rows(), Bitmap.Config.ARGB_8888);
-//        Utils.matToBitmap(outputImg, outputBitmap);
-//        // 保存图像到文件
-//        saveBitmapToFile(outputBitmap, "ProcessedImages");
+        // 使用drawMatches绘制两幅图像和匹配点
+        Mat outputImg = new Mat();
+        Features2d.drawMatches(img1, keypoints1, img2, keypoints2, goodMatches, outputImg, new Scalar(0, 255, 0), new Scalar(255, 0, 0), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
+        // 将Mat转为Bitmap显示在UI中
+        Bitmap outputBitmap = Bitmap.createBitmap(outputImg.cols(), outputImg.rows(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(outputImg, outputBitmap);
+        // 保存图像到文件
+        saveBitmapToFile(outputBitmap, "ProcessedImages");
 
 
         DMatch[] dmatchArray=goodMatches.toArray();
@@ -680,6 +694,40 @@ public class PhotoProcessingWorker extends Worker {
         // 将结果复制回原数组中
         System.arraycopy(filteredAviationHigh, 0, aviationHigh, 0, filteredAviationHigh.length);
         System.arraycopy(filteredAviationHighPoints, 0, aviationHighPoints, 0, filteredAviationHighPoints.length);
+    }
+
+
+    /**
+     * 对输入的Bitmap进行AxB分割，并提取指定范围内的块。
+     *
+     * @param inputBitmap 输入的Bitmap图像
+     * @param A 行数，将图像分割为A行
+     * @param B 列数，将图像分割为B列
+     * @param rowStart 起始行索引（包含）
+     * @param rowEnd 结束行索引（包含）
+     * @param colStart 起始列索引（包含）
+     * @param colEnd 结束列索引（包含）
+     * @return 返回指定范围内的多个小块Bitmap
+     */
+    public static Bitmap getSubBitmap(Bitmap inputBitmap, int A, int B, int rowStart, int rowEnd, int colStart, int colEnd) {
+        // 获取输入图像的宽度和高度
+        int width = inputBitmap.getWidth();
+        int height = inputBitmap.getHeight();
+
+        // 计算每个小块的宽度和高度
+        int blockWidth = width / B;   // 每列的宽度
+        int blockHeight = height / A; // 每行的高度
+
+        // 计算目标区域的宽高
+        int subWidth = (colEnd - colStart + 1) * blockWidth;
+        int subHeight = (rowEnd - rowStart + 1) * blockHeight;
+
+        // 计算目标区域的左上角坐标
+        int left = colStart * blockWidth;
+        int top = rowStart * blockHeight;
+
+        // 返回指定区域的Bitmap
+        return Bitmap.createBitmap(inputBitmap, left, top, subWidth, subHeight);
     }
 
 }

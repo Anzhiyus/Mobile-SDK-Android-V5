@@ -12,6 +12,10 @@
 
 
 
+
+
+
+
     <dji.v5.ux.core.widget.hsi.HorizontalSituationIndicatorWidget
         android:id="@+id/widget_horizontal_situation_indicator"
         android:layout_width="350dp"
@@ -420,6 +424,15 @@
         >
 
     </dji.v5.ux.core.widget.remotecontrollersignal.RemoteControllerSignalWidget>
+
+
+
+
+
+
+
+
+
 
 
 

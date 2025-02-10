@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#03FFC022"/>  <!-- 设置背景颜色 -->
+            <stroke
+                android:width="2dp"
+                android:color="#000000"/>  <!-- 设置边框颜色 -->
+        </shape>
+    </item>
+</layer-list>

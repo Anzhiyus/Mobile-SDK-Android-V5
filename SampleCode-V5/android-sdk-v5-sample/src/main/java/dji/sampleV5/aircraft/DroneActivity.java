@@ -52,7 +52,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import dji.sampleV5.aircraft.pages.DroneFlyFragment;
+//import dji.sampleV5.aircraft.pages.DroneFlyFragment;
 import dji.sampleV5.aircraft.pages.MediaFragment;
 
 public class DroneActivity extends AppCompatActivity {

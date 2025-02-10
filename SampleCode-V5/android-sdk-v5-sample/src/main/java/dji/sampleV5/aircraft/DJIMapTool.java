@@ -149,6 +149,7 @@ public class DJIMapTool {
                 List<DJILatLng> points= getPointsFromMarkers(flightPointMarkers);
                 LoadArea(points);  // 更新边界图层flightPolygon
                 LoadWayLines(points); // 更新航线图层flightPolyline
+                resetCenterMoveMarker(points);
                 LoadLineCenterPointMarkers(points);  // 更新边界和区域中点标志
                 return true;
             }
@@ -174,10 +175,12 @@ public class DJIMapTool {
                         flightPointMarkers.get(i).setPosition(newposition);
                     }
                 }
+
                 // 整体拖动，区域、标志和航线等都要更新
                 List<DJILatLng> points= getPointsFromMarkers(flightPointMarkers);
                 LoadArea(points);  // 更新边界图层flightPolygon
                 LoadWayLines(points); // 更新航线图层flightPolyline
+
                 LoadLineCenterPointMarkers(points); // 更新边界和区域中点标志
                 positionBeforeDrag=positionOnDrag;
             }
@@ -192,7 +195,7 @@ public class DJIMapTool {
     // 由画图时 flightPointMarkers 标志提取端点，画图
     public void LoadLineCenterPointMarkers(List<DJILatLng> rect){
         // 清除并更新图形中心标志
-        resetCenterMoveMarker(rect); // flightCenterPointMarker ,更新中点
+//        resetCenterMoveMarker(rect); // flightCenterPointMarker ,更新中点
 
         // 清除并更新边界中心
         for (int i = 0; i < flightLineCenterPointMarkers.size(); i++) {

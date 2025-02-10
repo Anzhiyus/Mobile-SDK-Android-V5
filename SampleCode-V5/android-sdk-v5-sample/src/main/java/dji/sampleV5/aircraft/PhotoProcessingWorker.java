@@ -59,7 +59,7 @@ import java.util.regex.Pattern;
 
 import dji.v5.utils.common.ContextUtil;
 import dji.v5.utils.common.DiskUtil;
-
+import dji.sampleV5.aircraft.djicontroller.LogUtil;
 public class PhotoProcessingWorker extends Worker {
     Context context = getApplicationContext(); // 获取 Context
     private static final String TAG = "OpencvpictureActivity";
@@ -97,12 +97,11 @@ public class PhotoProcessingWorker extends Worker {
         double FocalLength = getInputData().getDouble("photo_focallength", 0.04);
         double PixelDim = getInputData().getDouble("photo_pixeldim", 4.5/1000/1000);  // 米/像素
 
-        Log.d(TAG, "photo_path: "+path1);
-        Log.d(TAG, "photo_path: "+tempDataPath2);
+        LogUtil.INSTANCE.d(TAG, "当前照片路径: "+path1);
+        LogUtil.INSTANCE.d(TAG, "上一照片路径: "+tempDataPath2);
 
         // 检查列表是否为空
         if (tempDataPath2 == "kong") {
-            Log.d(TAG, "The list is empty. Function completed: "+tempDataPath2);
             // 数据暂存缓存路径
 //            tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
             tempDataPath2 = saveImageToCacheDir(context,path1,path1.substring(path1.lastIndexOf("/") + 1));
@@ -111,11 +110,11 @@ public class PhotoProcessingWorker extends Worker {
             editor.putString("tempDataPath2", tempDataPath2);
             editor.apply();
             // 如果列表为空，函数直接返回
-            Log.d(TAG, "The list is empty. Function completed: "+tempDataPath2);
+            LogUtil.INSTANCE.d(TAG, "上一照片路径更新: "+tempDataPath2);
             System.out.println("The list is empty. Function completed.");
             // 返回结果
             Data outputData = new Data.Builder()
-                    .putDouble("result_value", 0.01)
+                    .putDouble("result_value", 0.0001)
                     .build();
             return Result.success(outputData);
         }
@@ -135,14 +134,14 @@ public class PhotoProcessingWorker extends Worker {
             e.printStackTrace();
         }
 
-        Log.d(TAG, "img1Bitmap分辨率宽: "+img1Bitmap.getWidth());
-        Log.d(TAG, "img2Bitmap分辨率高: "+img2Bitmap.getHeight());
+        LogUtil.INSTANCE.d(TAG, "img1Bitmap分辨率宽: "+img1Bitmap.getWidth());
+        LogUtil.INSTANCE.d(TAG, "img2Bitmap分辨率高: "+img2Bitmap.getHeight());
 
 
         double idw = processImageORB(img1Bitmap,img2Bitmap, FocalLength, baseLine, PixelDim);
 
 //        double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
-        Log.d(TAG, "idw: "+Math.round(idw * 10) / 10.0 );
+        LogUtil.INSTANCE.d(TAG, "idw: "+Math.round(idw * 10) / 10.0 );
         // 数据暂存缓存路径
 //        tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
         tempDataPath2 = saveImageToCacheDir(context,path1,path1.substring(path1.lastIndexOf("/") + 1));
@@ -157,14 +156,14 @@ public class PhotoProcessingWorker extends Worker {
 //        calculateWeightSmooth(idwData_Smooth1, idw, 10,weights);
 //        // 第二次加权平滑结果
 //        smoothmean = calculateWeightSmooth(idwData_Smooth2, idwData_Smooth1.get(idwData_Smooth1.size()-1), 10,weights2);
-//        Log.d(TAG, "smoothmean: "+Math.round(smoothmean * 10) / 10.0 );
+//        LogUtil.INSTANCE.d(TAG, "smoothmean: "+Math.round(smoothmean * 10) / 10.0 );
 //
 //        // 执行需要测量运行时间的代码块
 //        long endTime = System.nanoTime();
 //        long elapsedTime = endTime - startTime;
-//        Log.d(TAG, "smoothmean elapsedTime: "+elapsedTime );
+//        LogUtil.INSTANCE.d(TAG, "smoothmean elapsedTime: "+elapsedTime );
         // 卡尔曼滤波
-        Log.d(TAG, "KalmanFilter: "+applyKalmanFilter(idwData_KalmanFilter, idw));
+        LogUtil.INSTANCE.d(TAG, "KalmanFilter: "+applyKalmanFilter(idwData_KalmanFilter, idw));
 
         // 更新并保存共享数据
         SharedPreferences.Editor editor = sharedPreferences.edit();
@@ -172,7 +171,7 @@ public class PhotoProcessingWorker extends Worker {
         editor.putFloat("tempDataIdw", (float) tempDataIdw);
         aviationHighMedian.add(idw);
         editor.putString("aviationHighMedian",doubleListToJson(aviationHighMedian) );
-        Log.d(TAG, "aviationHighMedian: "+aviationHighMedian);
+        LogUtil.INSTANCE.d(TAG, "aviationHighMedian: "+aviationHighMedian);
 //        editor.putString("idwData_Smooth1", doubleListToJson(idwData_Smooth1));
 //        editor.putString("idwData_Smooth2", doubleListToJson(idwData_Smooth2));
         editor.putString("idwData_KalmanFilter", doubleListToJson(idwData_KalmanFilter));
@@ -259,13 +258,13 @@ public class PhotoProcessingWorker extends Worker {
             bos.close();
             outputStream.close();
 
-            Log.i("ImageUtils", "Image saved to " + filePath);
+            LogUtil.INSTANCE.i("ImageUtils", "Image saved to " + filePath);
 
             // 返回保存的路径
             return filePath;
 
         } catch (IOException e) {
-            Log.e("ImageUtils", "Error saving image: " + e.getMessage());
+            LogUtil.INSTANCE.e("ImageUtils", "Error saving image: " + e.getMessage());
             return null;
         }
     }
@@ -337,6 +336,7 @@ public class PhotoProcessingWorker extends Worker {
                 double x2 = kp2.pt.x;
                 // ORB提取两对特征点进行筛选
                 boolean b0 = m[0].distance < ratioThresh * m[1].distance;
+                // 图像坐标系: y 坐标沿垂直方向向下增加。
                 // 当前无人机向正北飞，即同一点在当前照片y1的坐标大于上一张照片y2
                 boolean b1 = (y1-y2) > 0;;   // >0
                 // 航线重叠率为75%，特征点距离应该为25%。
@@ -390,7 +390,7 @@ public class PhotoProcessingWorker extends Worker {
             AviationHighPoints[i]=new Point(keyPointArray2[Idx2].pt.x-img2.cols()/2, keyPointArray2[Idx2].pt.y-img2.rows()/2);
             // 距离=焦距*基线/视差   AviationHigh=FocalLength * BaseLine / (Parallax * PixelDim)
             AviationHigh[i]=FocalLength * BaseLine / (Parallax * PixelDim);
-//            Log.d(TAG, "Parallax: "+ Parallax*10.0 / 10.0+"AviationHigh[i]: "+ AviationHigh[i]*10.0 / 10.0);
+//            LogUtil.INSTANCE.d(TAG, "Parallax: "+ Parallax*10.0 / 10.0+"AviationHigh[i]: "+ AviationHigh[i]*10.0 / 10.0);
 
 //            // 阈值判断
 //            if (AviationHigh[i] < 60) {
@@ -402,9 +402,9 @@ public class PhotoProcessingWorker extends Worker {
         }
 
         // 航线方向平均值
-        double angleDegressAverage = calculateAverage(angleDegress);
+//        double angleDegressAverage = calculateAverage(angleDegress);
         // 沿航线方向的边界点
-        Point boundaryPoint = calculateBoundaryPoint(new Point(img2.cols()/2, img2.rows()/2), angleDegressAverage>180?angleDegressAverage-180:angleDegressAverage+180, img2.cols(), img2.rows());
+//        Point boundaryPoint = calculateBoundaryPoint(new Point(img2.cols()/2, img2.rows()/2), angleDegressAverage>180?angleDegressAverage-180:angleDegressAverage+180, img2.cols(), img2.rows());
 
         // 执行需要测量运行时间的代码块
         long endTime = System.nanoTime();
@@ -415,7 +415,7 @@ public class PhotoProcessingWorker extends Worker {
 //        double idw = calculateWeight(AviationHigh, AviationHighPoints);
 
         double idw = calculateMedian(AviationHigh);
-        Log.d(TAG, "均值: "+ calculateAverage(AviationHigh)+ "  中值："+calculateMedian(AviationHigh));
+        LogUtil.INSTANCE.d(TAG, "均值: "+ calculateAverage(AviationHigh)+ "  中值："+calculateMedian(AviationHigh));
 
 
         // CSV 文件路径
@@ -440,9 +440,9 @@ public class PhotoProcessingWorker extends Worker {
         }
 
 
-        double weightedAviationHighGS = calculateWeightGS(AviationHigh, AviationHighPoints, boundaryPoint, img2.cols()/3);
-        Log.d(TAG, "GS距离加权: "+ Math.round(weightedAviationHighGS * 10) / 10.0);
-        Log.d(TAG, "GS距离加权: "+ AviationHigh.toString());
+//        double weightedAviationHighGS = calculateWeightGS(AviationHigh, AviationHighPoints, boundaryPoint, img2.cols()/3);
+//        LogUtil.INSTANCE.d(TAG, "GS距离加权: "+ Math.round(weightedAviationHighGS * 10) / 10.0);
+        LogUtil.INSTANCE.d(TAG, "GS距离加权: "+ AviationHigh.toString());
         return idw;
     }
 
@@ -571,7 +571,7 @@ public class PhotoProcessingWorker extends Worker {
         estimatedValue2 = predictedValue2 + kalmanGain2 * (estimatedValue1 - predictedValue2);
         estimatedError2 = (1 - kalmanGain2) * predictedError2;
 
-        Log.d(TAG, "estimatedError2: "+estimatedError2);
+        LogUtil.INSTANCE.d(TAG, "estimatedError2: "+estimatedError2);
 
         // 将二次滤波的结果添加到数据列表中
         existingData.add(Math.round(estimatedValue2 * 10) / 10.0 );
@@ -634,7 +634,8 @@ public class PhotoProcessingWorker extends Worker {
 
     public static double calculateAverage(double[] array) {
         if (array == null || array.length == 0) {
-            throw new IllegalArgumentException("Array cannot be null or empty");
+            LogUtil.INSTANCE.d(TAG, "calculateAverage : Array cannot be null or empty ");
+            return 0.0;
         }
 
         double sum = 0.0;
@@ -647,7 +648,8 @@ public class PhotoProcessingWorker extends Worker {
 
     public static double calculateMedian(double[] array) {
         if (array == null || array.length == 0) {
-            throw new IllegalArgumentException("Array cannot be null or empty");
+            LogUtil.INSTANCE.d(TAG, "calculateMedian : Array cannot be null or empty ");
+            return 0.0;
         }
 
         // 排序数组

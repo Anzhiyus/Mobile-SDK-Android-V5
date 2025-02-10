@@ -13,6 +13,10 @@
 
 
 
+
+
+
+
     <dji.v5.ux.core.widget.hsi.HorizontalSituationIndicatorWidget
         android:id="@+id/widget_horizontal_situation_indicator"
         android:layout_width="350dp"
@@ -31,63 +35,24 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintWidth_percent="0.85">
 
+
         <FrameLayout
             android:id="@+id/main_window"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_gravity="center" >
+
             <dji.v5.ux.map.MapWidget
                 android:id="@+id/map_widget"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent">
-            </dji.v5.ux.map.MapWidget>
+                android:layout_height="match_parent"></dji.v5.ux.map.MapWidget>
         </FrameLayout>
-
-        <FrameLayout
-            android:id="@+id/main_widget"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@color/black"
-            android:padding="4dp"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginEnd="0dp"
-            android:layout_marginTop="0dp">
-
-            <!-- 水平线性布局，用于包含小部件 -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">  <!-- 垂直居中对齐 -->
-
-                <!-- GPS信号小部件 -->
-                <dji.v5.ux.core.widget.gpssignal.GpsSignalWidget
-                    android:id="@+id/gps_signal_widget"
-                    android:layout_width="25dp"
-                    android:layout_height="25dp" />
-
-                <!-- 遥控信号小部件 -->
-                <dji.v5.ux.core.widget.remotecontrollersignal.RemoteControllerSignalWidget
-                    android:id="@+id/remote_controller_signal_widget"
-                    android:layout_width="30dp"
-                    android:layout_height="20dp" />
-
-                <!-- 电池小部件 -->
-                <dji.v5.ux.core.widget.battery.BatteryWidget
-                    android:id="@+id/battery_widget"
-                    android:layout_width="40dp"
-                    android:layout_height="20dp" />
-
-            </LinearLayout>
-
-        </FrameLayout>
-
 
         <FrameLayout
             android:id="@+id/thumbnail_window_left"
             android:layout_width="400px"
             android:layout_height="400px"
+            app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintBottom_toBottomOf="parent">
 
@@ -116,6 +81,7 @@
             android:id="@+id/thumbnail_window"
             android:layout_width="400px"
             android:layout_height="400px"
+            app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintBottom_toBottomOf="parent">
 
@@ -157,6 +123,9 @@
 
 
 
+
+
+
     <androidx.core.widget.NestedScrollView
         android:id="@+id/waypoint_button_list"
         android:layout_width="0dp"
@@ -173,92 +142,300 @@
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_marginTop="10dp"
             android:background="@color/white"
             android:orientation="vertical">
 
-
             <Button
-                android:id="@+id/btn_waylineplan_spf"
+                android:id="@+id/btn_mission_upload"
                 style="@style/main_fragment_btn"
-                android:text="航线规划"
+                android:text="@string/btn_mission_uploadkmz"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
 
             <Button
-                android:id="@+id/btn_input_kml_spf"
+                android:id="@+id/btn_mission_start"
                 style="@style/main_fragment_btn"
-                android:text="导入KML"
+                android:text="@string/btn_mission_start"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_waylineplan_spf"/>
-
-
-<!--            <Button-->
-<!--                android:id="@+id/btn_output_kml_spf"-->
-<!--                style="@style/main_fragment_btn"-->
-<!--                android:text="导出KML"-->
-<!--                app:layout_constraintEnd_toEndOf="parent"-->
-<!--                app:layout_constraintStart_toStartOf="parent"-->
-<!--                app:layout_constraintTop_toBottomOf="@+id/btn_waylineplan_spf"/>-->
-
-            <Button
-                android:id="@+id/btn_fly_spf"
-                style="@style/main_fragment_btn"
-                android:text="起飞"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_input_kml_spf"/>
-
-            <Button
-                android:id="@+id/btn_terrain_following_spf"
-                style="@style/main_fragment_btn"
-                android:text="仿地飞行"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_fly_spf"/>
-
+                app:layout_constraintTop_toBottomOf="@+id/btn_wayline_select" />
 
 
             <Button
-                android:id="@+id/btn_stop_spf"
+                android:id="@+id/btn_mission_pause"
                 style="@style/main_fragment_btn"
-                android:text="暂停任务"
+                android:text="@string/btn_mission_pause"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_terrain_following_spf"/>
-
-
+                app:layout_constraintTop_toBottomOf="@+id/btn_mission_start" />
 
             <Button
-                android:id="@+id/btn_breakpoint_resume_spf"
+                android:id="@+id/btn_mission_resume"
                 style="@style/main_fragment_btn"
-                android:text="断点续飞"
+                android:text="@string/btn_mission_resume"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_stop_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_mission_pause" />
 
             <Button
-                android:id="@+id/btn_take_photo_spf"
+                android:id="@+id/btn_mission_query"
                 style="@style/main_fragment_btn"
-                android:text="拍照"
+                android:text="@string/btn_mission_query"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_breakpoint_resume_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_mission_resume" />
 
             <Button
-                android:id="@+id/btn_download_photo_spf"
+                android:id="@+id/btn_mission_resume_with_bp"
                 style="@style/main_fragment_btn"
-                android:text="下载照片"
+                android:text="@string/btn_mission_resume_with_bp"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_take_photo_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/wp_break_progress" />
 
+            <Button
+                android:id="@+id/btn_mission_stop"
+                style="@style/main_fragment_btn"
+                android:text="@string/btn_mission_stop"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_breakpoint_resume" />
 
+            <Button
+                android:id="@+id/btn_wayline_select"
+                style="@style/main_fragment_btn"
+                android:text="@string/btn_mission_wayline_select"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_mission_upload" />
+
+            <dji.v5.ux.accessory.DescSpinnerCell
+                android:id="@+id/heightmode"
+                android:layout_width="100dp"
+                android:background="@color/gray"
+                android:textColor="@color/black"
+                android:layout_height="wrap_content"
+                app:uxsdk_entries="@array/kml_heigh_mode"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_mission_stop" />
+
+            <dji.v5.ux.accessory.DescSpinnerCell
+                android:id="@+id/resumeType"
+                android:layout_width="100dp"
+                android:background="@color/gray"
+                android:textColor="@color/black"
+                android:layout_height="wrap_content"
+                app:uxsdk_entries="@array/resume_type"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_mission_query" />
+
+            <EditText
+                android:id = "@+id/wp_break_index"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:text = "0"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/resumeType"
+                android:hint = "point index"/>
+
+            <EditText
+                android:id = "@+id/wp_break_progress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number|numberDecimal "
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                android:text = "0.0"
+                app:layout_constraintTop_toBottomOf="@+id/wp_break_index"
+                android:hint = "break progress"/>
+            <Button
+                android:id="@+id/btn_breakpoint_resume"
+                style="@style/main_fragment_btn"
+                android:text="@string/btn_mission_breakinfo_resume"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_mission_resume_with_bp" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.core.widget.NestedScrollView>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/kmz_btn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@color/white"
+
+        app:layout_constraintStart_toEndOf="@+id/waypoint_button_list"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/kml_img"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginTop="2dp"
+            android:src="@mipmap/ic_waypoint_kml"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif"
+            android:gravity="center"
+            android:text="KMZ Import"
+            android:textSize="8sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/kml_img" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <Spinner
+        android:id="@+id/sp_map_switch"
+        android:layout_width="100dp"
+        android:layout_height="30dp"
+        android:background="@drawable/bg_stroke_common_with_color"
+        android:dropDownWidth="120dp"
+        android:entries="@array/maps_array_all"
+        android:spinnerMode="dropdown"
+        android:textColor="@color/white"
+        android:visibility="gone"
+        android:layout_marginLeft="10dp"
+        app:layout_constraintBottom_toBottomOf="@+id/kmz_btn"
+        app:layout_constraintStart_toEndOf="@+id/kmz_btn"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/btn_editKmz"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="Edit KMZ"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/sp_map_switch" />
+
+    <Button
+        android:id="@+id/kmz_save"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="save"
+        android:enabled="false"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/btn_editKmz" />
+
+
+    <Button
+        android:id="@+id/waypoints_clear"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="clear"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/kmz_save" />
+
+    <ToggleButton
+        android:id="@+id/waypoint_add"
+        android:layout_marginTop="3dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textOn="CLOSE ADD"
+        android:textOff= "Add Point"
+        android:background="@drawable/toggle_selector"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/waypoints_clear" />
+
+    <Button
+        android:id="@+id/btn_take_photo_spf"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="拍照"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/waypoint_add" />
+
+    <Button
+        android:id="@+id/btn_download_photo_spf"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="仿地飞行"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/btn_take_photo_spf" />
+
+    <Button
+        android:id="@+id/btn_input_kml_spf"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="导入KML"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/btn_download_photo_spf" />
+
+    <Button
+        android:id="@+id/btn_fly_spf"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="起飞"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/btn_input_kml_spf" />
+
+    <Button
+        android:id="@+id/btn_stop_spf"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="停止"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/btn_fly_spf" />
+
+    <Button
+        android:id="@+id/btn_waylineplan_spf"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="航线规划"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/btn_stop_spf" />
+
+    <Button
+        android:id="@+id/btn_output_kml_spf"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="导出KML"
+        android:layout_marginLeft="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/btn_waylineplan_spf" />
+
+    <dji.v5.ux.core.widget.remotecontrollersignal.RemoteControllerSignalWidget
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toRightOf ="@+id/btn_output_kml_spf"
+        >
+
+    </dji.v5.ux.core.widget.remotecontrollersignal.RemoteControllerSignalWidget>
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -333,31 +510,22 @@
         android:layout_height="wrap_content"
         android:text="simulator state info:"
         android:textSize="13dp"
-        app:layout_constraintStart_toEndOf="@+id/waypoint_button_list"
-        app:layout_constraintTop_toBottomOf="@+id/wayline_aircraft_speed">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
     </TextView>
 
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
-        <!-- 设置电池小部件或其他视图 -->
-
-        <ImageButton
-            android:id="@+id/map_locate"
-            android:padding="10dp"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/selector_blue_rect_mask"
-            android:scaleType="fitCenter"
-            android:src="@mipmap/ic_map_osd_locate"
-            android:layout_margin="8dp"
-            android:layout_gravity="top|start"
-            android:translationX="110dp"
-            android:translationY="0dp"/>
-
-    </FrameLayout>
-
+    <ImageButton
+        android:id="@+id/map_locate"
+        android:padding="10dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center_vertical"
+        android:background="@drawable/selector_blue_rect_mask"
+        android:scaleType="fitCenter"
+        android:src="@mipmap/ic_map_osd_locate"
+        android:layout_marginRight="8dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/mission_panel_container"

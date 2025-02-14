@@ -105,7 +105,7 @@ public class DJIMapTool {
 
                     // 规划确认标志
                     if(flightPointMarkers.size()>2){
-                        drawPointMarkerOK=markPoint(R.mipmap.playback_ic_selected, latLng, "v",false);  // 对号确认图标
+                        drawPointMarkerOK=markPoint(R.mipmap.playback_ic_selected, latLng, "v",0.5f, 1.0f);  // 对号确认图标
                     }
                 }
             });
@@ -329,6 +329,17 @@ public class DJIMapTool {
     // 重载方法，默认 isDarggable 为 false
     public DJIMarker markPoint(int res, DJILatLng latlong, String waypointIndex) {
         return markPoint(res, latlong, waypointIndex, false);  // 默认 isDarggable 为 false
+    }
+
+    public DJIMarker markPoint(int res, DJILatLng latlong, String waypointIndex ,float u, float v) {
+        DJIMarkerOptions markOptions = new DJIMarkerOptions();
+        markOptions.position(latlong);
+        markOptions.icon(getMarkerRes(res, waypointIndex, 0f));
+        markOptions.anchor(u, v) ; // 设置锚点位置
+        markOptions.draggable(false);
+        markOptions.title(String.valueOf(waypointIndex));
+        markOptions.setInfoWindowEnable(true);
+        return _amap.addMarker(markOptions);
     }
 
     public DJIMarker markPoint(int res, DJILatLng latlong, String waypointIndex, boolean isDarggable) {

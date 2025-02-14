@@ -120,9 +120,11 @@ import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 
@@ -190,8 +192,6 @@ class WayPointV3Fragment : DJIFragment() {
     private lateinit var WayLineDataSP: SharedPreferences
     private lateinit var WayLineDataEdit: SharedPreferences.Editor
 
-
-
     // 判断OpenCV是否加载成功
     private val loaderCallback: BaseLoaderCallback = object : BaseLoaderCallback(context) {
         override fun onManagerConnected(status: Int) {
@@ -258,7 +258,7 @@ class WayPointV3Fragment : DJIFragment() {
 
         mediaVM.init()
 
-//        loadLocalPhoto() // 读取本地文件（计算基线距离）
+        loadLocalPhoto() // 读取本地文件（计算基线距离）
         clearSharedPreferences()
         i = 0
 
@@ -331,56 +331,56 @@ class WayPointV3Fragment : DJIFragment() {
             }
         }
 
-//        //        // 读取本地文件夹中的数据：
-//        btn_terrain_following_spf.setOnClickListener {
-////            // 显示kml航线
-////            LogUtil.d(TAG, "Log：航线$routePoints")
-////            routePoints.forEach() {
-////                maptool?.markPoint(R.mipmap.mission_edit_waypoint_normal, it, "+");  // 创建边界中心点
-//////                markWaypoint(DJIGpsUtils.gcj2wgsInChina(it), 0)
-////            }
-//
-//            LogUtil.d(TAG, "Log：DJI开始")
-//            lifecycleScope.launch {
-//                try {
-//                    for (i in pictureArray.indices) {
-//                        LogUtil.d(TAG, "for循环：$i")
-//                        val path = pictureArray[i]
-//                        if (path != null) {
-////                            val resultValue = downloadPhotoSuspend(path, 27.75, 0.01229, 3.3 / 1000 / 1000, requireContext()) // 27.75 23.74
-//                            val resultValue = downloadPhotoSuspend(path, 23.74, 0.01229, 3.3 / 1000 / 1000, requireContext()) // 27.75 23.74
-//                            LogUtil.d(TAG, "DJI回调返回的结果: $resultValue")
-//                        } else {
-//                            LogUtil.d(TAG, "DJI回调返回的结果: 下载失败，无法获取路径")
-//                        }
-//                    }
-//                    LogUtil.d(TAG, "for循环：结束")
-//                } catch (e: Exception) {
-//                    LogUtil.e(TAG, "下载失败: ${e.message}")
-//                }
-//            }
-//        }
-
-        // 按钮点击事件：仿地飞行
+        //        // 读取本地文件夹中的数据：
         btn_terrain_following_spf.setOnClickListener {
-            ToastUtils.showToast("开始仿地飞行")
-            // 更新全局变量
-            val location = getAircraftLocation()
-            droneCurrentLocation = DJILatLng(location.latitude, location.longitude)
+//            // 显示kml航线
+//            LogUtil.d(TAG, "Log：航线$routePoints")
+//            routePoints.forEach() {
+//                maptool?.markPoint(R.mipmap.mission_edit_waypoint_normal, it, "+");  // 创建边界中心点
+////                markWaypoint(DJIGpsUtils.gcj2wgsInChina(it), 0)
+//            }
 
-            // 启动新的任务
-            if (currentIndex == 0) {  // 只有在航点索引为0时才能启动飞行
-                currentTaskJob = lifecycleScope.launch {
-                    enqueueTask {
-                        performTask()
-//                        sendVirtualStickParametersTest()
+            LogUtil.d(TAG, "Log：DJI开始")
+            lifecycleScope.launch {
+                try {
+                    for (i in pictureArray.indices) {
+                        LogUtil.d(TAG, "for循环：$i")
+                        val path = pictureArray[i]
+                        if (path != null) {
+//                            val resultValue = downloadPhotoSuspend(path, 27.75, 0.01229, 3.3 / 1000 / 1000, requireContext()) // 27.75 23.74
+                            val resultValue = downloadPhotoSuspend(path, 11.87, 0.01229, 3.3 / 1000 / 1000, requireContext()) // 27.75 23.74 11.87
+                            LogUtil.d(TAG, "DJI回调返回的结果: $resultValue")
+                        } else {
+                            LogUtil.d(TAG, "DJI回调返回的结果: 下载失败，无法获取路径")
+                        }
                     }
+                    LogUtil.d(TAG, "for循环：结束")
+                } catch (e: Exception) {
+                    LogUtil.e(TAG, "下载失败: ${e.message}")
                 }
-                isActive = true
-                btn_stop_spf.text = "暂停任务"
-                hasReturnedHome = false  // 重置返航状态
             }
         }
+
+//        // 按钮点击事件：仿地飞行
+//        btn_terrain_following_spf.setOnClickListener {
+//            ToastUtils.showToast("开始仿地飞行")
+//            // 更新全局变量
+//            val location = getAircraftLocation()
+//            droneCurrentLocation = DJILatLng(location.latitude, location.longitude)
+//
+//            // 启动新的任务
+//            if (currentIndex == 0) {  // 只有在航点索引为0时才能启动飞行
+//                currentTaskJob = lifecycleScope.launch {
+//                    enqueueTask {
+//                        performTask()
+////                        sendVirtualStickParametersTest()
+//                    }
+//                }
+//                isActive = true
+//                btn_stop_spf.text = "暂停任务"
+//                hasReturnedHome = false  // 重置返航状态
+//            }
+//        }
 
         // 按钮点击事件：起飞
         btn_fly_spf.setOnClickListener {
@@ -562,7 +562,9 @@ class WayPointV3Fragment : DJIFragment() {
             moveDroneToPointVertical(routePoints[currentIndex] , 0.0, diffHeight)
             // 调整方向
             droneLastAzimuth = moveDroneToPointYaw(routePoints[currentIndex] , 0.0)
+            LogUtil.d(TAG, "之后高度：${getAircraftLocation().altitude} ")
             // 进行飞行
+            moveDroneToPointRow(routePoints[currentIndex] , droneLastAzimuth)
             moveDroneToPointRow(routePoints[currentIndex] , droneLastAzimuth)
         }
         currentIndex++
@@ -580,6 +582,7 @@ class WayPointV3Fragment : DJIFragment() {
         LogUtil.d(TAG, "当前航线kmlSpeed：${kmlSpeed}")
         LogUtil.d(TAG, "while：${currentIndex}")
 
+        var droneLastHeight = getAircraftLocation().altitude
         while (currentIndex < routePoints.size && isActive) {
             LogUtil.d(TAG, "航线飞行状态：$isActive")
             // 1. 先拍照，无人机拍照
@@ -634,6 +637,9 @@ class WayPointV3Fragment : DJIFragment() {
             var elapsedTimeInSeconds = elapsedTime / 1_000_000_000.0
             LogUtil.d(TAG, "下载照片 耗时: $elapsedTimeInSeconds")
 
+            // 基线修正
+            var droneCurrentHeight = getAircraftLocation().altitude
+            kmlWaypointDistance = hypot(droneLastHeight, droneCurrentHeight)
             startTime = System.nanoTime()
             LogUtil.d(TAG, "下载照片 : $path")
             var resultValue = 0.0
@@ -645,7 +651,7 @@ class WayPointV3Fragment : DJIFragment() {
                     3.3 / 1000 / 1000,
                     requireContext()
                 )
-                LogUtil.d(TAG,  "DJI回调返回的结果: $resultValue")
+                LogUtil.d(TAG,  "当前高度、计算结果: ${getAircraftLocation().altitude}、$resultValue")
             } else {
                 LogUtil.d(TAG, "DJI回调返回的结果: 下载失败，无法获取路径")
             }
@@ -660,21 +666,23 @@ class WayPointV3Fragment : DJIFragment() {
             LogUtil.d(TAG, "仿地飞行计算 耗时: $elapsedTimeInSeconds")
 
             // 随机数
-            resultValue = Random.nextDouble(kmlHeight * 0.7, kmlHeight * 1.3)
+            resultValue = Random.nextDouble(kmlHeight * 0.8, kmlHeight * 1.2)
+            // 随机数
+//            resultValue = kmlHeight
 
              // 高程调整距离,调整范围不超过初始值的40%
             if(abs(resultValue-kmlHeight)<0.5)
             {
                 resultValue = kmlHeight
-            }else if ((resultValue-kmlHeight)>resultValue*0.4)
+            }else if ((resultValue-kmlHeight)>kmlHeight*0.2)
             {
                 resultValue = kmlHeight
-            }else if ((resultValue-kmlHeight)<-resultValue*0.4)
+            }else if ((resultValue-kmlHeight)<-kmlHeight*0.2)
             {
                 resultValue = kmlHeight
             }
 //            resultValue = kmlHeight  // 1. 调整固定距离
-            resultValue = resultValue - location.altitude
+            resultValue =  kmlHeight - resultValue
             LogUtil.d(TAG, "目标点：$end")
             LogUtil.d(TAG, "调整高度：$resultValue")
             LogUtil.d(TAG, "VirtualStick: now：$currentIndex")
@@ -919,29 +927,33 @@ class WayPointV3Fragment : DJIFragment() {
     suspend fun moveDroneToPointRow(end: DJILatLng , droneLastAzimuth:Double= 0.0, speed:Double = 5.0){
         // 初始点
         val initialLocation = getAircraftLocation()
-        val initialStart = DJILatLng(initialLocation.latitude, initialLocation.longitude)
+        val initialPoint = DJILatLng(initialLocation.latitude, initialLocation.longitude)
 
         // 计算当前点与目标点的距离
-        var distance = DJIGpsUtils.distance(initialStart, end)
+        var distance = DJIGpsUtils.distance(initialPoint, end)
         distance = (distance * 100).roundToInt() / 100.0 // 保留两位小数
 
         // 动态调整飞行距离的百分比
         val flightPercentage = when {
-//                distance > 50 -> 0.8 // 距离较远时飞行 90%
-//                distance > 5 -> 0.5 // 距离中等时飞行 50%
+                distance > 40 -> (1-20.0/distance) // 距离较远时飞行 distance-20m
             else -> 1.0 // 距离接近时飞行 100%
         }
+        LogUtil.d(TAG, "总距离：$distance")
         LogUtil.d(TAG, "flightPercentage：$flightPercentage")
         val adjustedDistance = distance * flightPercentage
         val flightTime = adjustedDistance / speed // 计算飞行时间
 
+        LogUtil.d(TAG, "飞行距离：$adjustedDistance")
         LogUtil.d(TAG, "flightTime：$flightTime")
 
         if (flightTime > 0.2){
             LogUtil.d(TAG, "moveDroneToPoint：进行飞行 $flightTime 秒")
             sendVirtualStickParameters(flightTime, 0.0, speed, droneLastAzimuth)
         }
-        delay(200)
+        delay(1200) // 延迟1.2秒使飞机平稳
+        var endLocation = getAircraftLocation()
+        var endPoint = DJILatLng(endLocation.latitude, endLocation.longitude)
+        LogUtil.d(TAG, "实际飞行距离：${DJIGpsUtils.distance(initialPoint, endPoint)}")
     }
 
     suspend fun moveDroneToPointVertical(end: DJILatLng , droneLastAzimuth:Double= 0.0, adjustHeight:Double = 0.0){
@@ -953,10 +965,11 @@ class WayPointV3Fragment : DJIFragment() {
         if (adjustHeight < 0) verticalSpeed = -verticalSpeed
 
         if (timeVertical > 1){
-            LogUtil.d(TAG, "moveDroneToPointVertical：调整高度 ${timeVertical * 5}")
+            LogUtil.d(TAG, "moveDroneToPointVertical：调整高度 ${adjustHeight}")
+            LogUtil.d(TAG, "moveDroneToPointVertical：调整速度 ${verticalSpeed}")
             sendVirtualStickParameters(timeVertical, 0.0, 0.0, droneLastAzimuth, verticalSpeed)
         }
-        delay(200)
+        delay(1200)
         var nextHeight = getAircraftLocation().altitude
         LogUtil.d(TAG, "当前高度、调整高度、之后高度：$currentHeight $adjustHeight $nextHeight ")
     }
@@ -1124,12 +1137,14 @@ class WayPointV3Fragment : DJIFragment() {
                     // 恢复挂起函数，通知调用者任务完成
                     continuation.resume(Unit)
                     ToastUtils.showToast("take photo success")
+                    LogUtil.d(TAG, "拍照成功")
                 }
 
                 override fun onFailure(error: IDJIError) {
                     // 恢复挂起函数，通知调用者任务失败
                     continuation.resumeWithException(Exception("Take photo failed: ${error}"))
                     ToastUtils.showToast("take photo failed")
+                    LogUtil.d(TAG, "拍照失败")
                 }
             })
 
@@ -1481,9 +1496,14 @@ class WayPointV3Fragment : DJIFragment() {
 //        )
 //        ToastUtils.showToast( "DJI开始：${requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_20250121"}")
 
+//        pictureArray = getMatchingFileNames(
+//            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/20231107_H1数据",
+//            "^H101.*\\.(jpg|JPG)"
+//        )
+
         pictureArray = getMatchingFileNames(
-            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/20231107_H1数据",
-            "^H101.*\\.(jpg|JPG)"
+            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/20250212_A",
+            "^Picture_20250212_.*\\.(jpg|JPG)"
         )
 
     }

@@ -180,7 +180,8 @@ public class PhotoProcessingWorker extends Worker {
 
         // 返回结果
         Data outputData = new Data.Builder()
-                .putDouble("result_value", idwData_KalmanFilter.get(idwData_KalmanFilter.size() - 1))
+//                .putDouble("result_value", idwData_KalmanFilter.get(idwData_KalmanFilter.size() - 1))
+                .putDouble("result_value", idw)
 //                .putDouble("result_value", Math.round(smoothmean * 10) / 10.0 )
                 .build();
         return Result.success(outputData);
@@ -285,8 +286,26 @@ public class PhotoProcessingWorker extends Worker {
 
         // 对图像分割提取
         // processImageORB(getSubBitmap(img1Bitmap,4,4,0,2,1,2), getSubBitmap(img2Bitmap,4,4,0,2,1,2),
-        img1Bitmap = getSubBitmap(img1Bitmap,4,4,0,2,0,3);
-        img2Bitmap = getSubBitmap(img2Bitmap,4,4,0,2,0,3);
+        // 75%重叠率，分为4x4格网，高取前75%，宽取100%
+//        img1Bitmap = getSubBitmap(img1Bitmap,4,4,0,2,0,3);
+//        img2Bitmap = getSubBitmap(img2Bitmap,4,4,0,2,0,3);
+
+////        // 90%重叠率，分为10x10格网，高取前50%，宽取中间60%
+//        img1Bitmap = getSubBitmap(img1Bitmap,10,10,0,4,2,7);
+//        img2Bitmap = getSubBitmap(img2Bitmap,10,10,0,4,2,7);
+
+//        ////        // 90%重叠率，分为10x10格网，高从上倒下取30~70%，宽取中间60%
+//        img1Bitmap = getSubBitmap(img1Bitmap,10,10,2,6,2,7);
+//        img2Bitmap = getSubBitmap(img2Bitmap,10,10,2,6,2,7);
+
+        ////        // 90%重叠率，分为10x10格网，高从上倒下取30~70%，宽取中间40%
+//        img1Bitmap = getSubBitmap(img1Bitmap,10,10,2,6,3,6);
+//        img2Bitmap = getSubBitmap(img2Bitmap,10,10,2,6,3,6);
+
+        ////        // 90%重叠率，分为10x10格网，高取前50%，宽取中间40%
+        img1Bitmap = getSubBitmap(img1Bitmap,10,10,0,4,3,6);
+        img2Bitmap = getSubBitmap(img2Bitmap,10,10,0,4,3,6);
+
 
         long startTime = System.nanoTime();
         // 距离=焦距*基线/视差   AviationHigh=FocalLength * BaseLine / (Parallax * PixelDim)
@@ -336,13 +355,23 @@ public class PhotoProcessingWorker extends Worker {
                 double x2 = kp2.pt.x;
                 // ORB提取两对特征点进行筛选
                 boolean b0 = m[0].distance < ratioThresh * m[1].distance;
+
+                // 1000像素下，基线差3m，高程差10m
+//                // 图像坐标系: y 坐标沿垂直方向向下增加。
+//                // 当前无人机向正北飞，即同一点在当前照片y1的坐标大于上一张照片y2
+//                boolean b1 = (y1-y2) > 0;;   // >0
+//                // 航线重叠率为75%，特征点距离应该为25%。
+//                boolean b2 = (y1-y2) < bitmapHeight*0.3;
+//                // 当前无人机向正北飞，特征点东西方向应无距离
+//                boolean b3 = abs(x1-x2)<bitmapWidth*0.05;
+
                 // 图像坐标系: y 坐标沿垂直方向向下增加。
                 // 当前无人机向正北飞，即同一点在当前照片y1的坐标大于上一张照片y2
-                boolean b1 = (y1-y2) > 0;;   // >0
-                // 航线重叠率为75%，特征点距离应该为25%。
-                boolean b2 = (y1-y2) < bitmapHeight*0.3;
-                // 当前无人机向正北飞，特征点东西方向应无距离
-                boolean b3 = abs(x1-x2)<bitmapWidth*0.05;
+                // 航线重叠率为90%，特征点距离应该为10%。允许误差是0.5%（20像素）
+                boolean b1 = (y1-y2) > bitmapHeight*(0.1-0.05);
+                boolean b2 = (y1-y2) < bitmapHeight*(0.1+0.05);
+                // 当前无人机向正北飞，特征点东西方向应无距离允许误差是0.4%（20像素）
+                boolean b3 = abs(x1-x2)<bitmapWidth*0.04;
 
                 if ( b0 && b1 && b2 && b3) {
                     goodMatchesList.add(m[0]);

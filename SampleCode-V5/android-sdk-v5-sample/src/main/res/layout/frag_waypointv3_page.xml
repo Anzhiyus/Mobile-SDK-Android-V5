@@ -177,6 +177,13 @@
             android:background="@color/white"
             android:orientation="vertical">
 
+            <Button
+                android:id="@+id/btn_start_gohome_spf"
+                style="@style/main_fragment_btn"
+                android:text="自动返航"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
 
             <Button
                 android:id="@+id/btn_waylineplan_spf"
@@ -184,7 +191,7 @@
                 android:text="航线规划"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                app:layout_constraintTop_toBottomOf="@+id/btn_start_gohome_spf" />
 
             <Button
                 android:id="@+id/btn_input_kml_spf"
@@ -254,6 +261,14 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@+id/btn_take_photo_spf"/>
+
+            <Button
+                android:id="@+id/btn_localcomputation_spf"
+                style="@style/main_fragment_btn"
+                android:text="本地计算"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_download_photo_spf"/>
 
 
 

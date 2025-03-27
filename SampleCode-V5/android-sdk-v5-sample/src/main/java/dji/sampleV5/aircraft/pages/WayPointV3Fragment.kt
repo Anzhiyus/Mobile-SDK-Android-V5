@@ -174,10 +174,14 @@ class WayPointV3Fragment : DJIFragment() {
     var droneCurrentLocation: DJILatLng? = null
     // 当前航点索引（持久化变量，可存储在文件、数据库或 SharedPreferences 中）
     var currentIndex: Int = 0
-    var hasReturnedHome = false  // 是否已返航
     // 全局变量：默认方位角
     var droneLastAzimuth: Double = 0.0
-    var isActive:Boolean = true
+    // 无航线任务
+    var hasWaylineTask:Boolean  = false
+    // 正在仿地飞行
+    var isTerrainFollowing:Boolean = false
+    // 返航时记录的航线索引，需要本地记录
+    var goHomeWaylineIndex : Int = 0
     private var kmlSpeed: Double = 5.00
     private var kmlHeight: Double = 5.00
     private var kmlTime: Double = 0.00
@@ -258,7 +262,6 @@ class WayPointV3Fragment : DJIFragment() {
 
         mediaVM.init()
 
-        loadLocalPhoto() // 读取本地文件（计算基线距离）
         clearSharedPreferences()
         i = 0
 
@@ -298,6 +301,9 @@ class WayPointV3Fragment : DJIFragment() {
         createMapView(savedInstanceState)
         observeAircraftLocation()
 
+
+
+
         btn_take_photo_spf.setOnClickListener {
             ToastUtils.showToast("ToastUtils：DJI开始")
             LogUtil.d(TAG, "DJI开始")
@@ -332,13 +338,14 @@ class WayPointV3Fragment : DJIFragment() {
         }
 
         //        // 读取本地文件夹中的数据：
-        btn_terrain_following_spf.setOnClickListener {
+        btn_localcomputation_spf.setOnClickListener {
 //            // 显示kml航线
 //            LogUtil.d(TAG, "Log：航线$routePoints")
 //            routePoints.forEach() {
 //                maptool?.markPoint(R.mipmap.mission_edit_waypoint_normal, it, "+");  // 创建边界中心点
 ////                markWaypoint(DJIGpsUtils.gcj2wgsInChina(it), 0)
 //            }
+            loadLocalPhoto() // 读取本地文件（计算基线距离）
 
             LogUtil.d(TAG, "Log：DJI开始")
             lifecycleScope.launch {
@@ -361,31 +368,17 @@ class WayPointV3Fragment : DJIFragment() {
             }
         }
 
-//        // 按钮点击事件：仿地飞行
-//        btn_terrain_following_spf.setOnClickListener {
-//            ToastUtils.showToast("开始仿地飞行")
-//            // 更新全局变量
-//            val location = getAircraftLocation()
-//            droneCurrentLocation = DJILatLng(location.latitude, location.longitude)
-//
-//            // 启动新的任务
-//            if (currentIndex == 0) {  // 只有在航点索引为0时才能启动飞行
-//                currentTaskJob = lifecycleScope.launch {
-//                    enqueueTask {
-//                        performTask()
-////                        sendVirtualStickParametersTest()
-//                    }
-//                }
-//                isActive = true
-//                btn_stop_spf.text = "暂停任务"
-//                hasReturnedHome = false  // 重置返航状态
-//            }
-//        }
-
         // 按钮点击事件：起飞
         btn_fly_spf.setOnClickListener {
-            // 开启虚拟遥感
-            initBtnClickListener()
+            var flagVS = virtualStickVM.currentVirtualStickStateInfo.value?.state?.isVirtualStickAdvancedModeEnabled ?: false
+            if ( flagVS ){
+                ToastUtils.showToast("已开启虚拟遥感！")
+            }else{
+                // 开启虚拟遥感
+                initBtnClickListener()
+
+            }
+
             // 起飞
             basicAircraftControlVM.startTakeOff(object :
                 CommonCallbacks.CompletionCallbackWithParam<EmptyMsg> {
@@ -421,37 +414,96 @@ class WayPointV3Fragment : DJIFragment() {
             startActivityForResult(intent, REQUEST_CODE_IMPORT_KML)
         }
 
-        // 按钮点击事件：停止和继续
-        btn_stop_spf.setOnClickListener {
-            // 取消当前任务
-            if (isActive)
-            {
-                isActive = false
-                LogUtil.d(TAG, "开始暂停航线飞行")
-                ToastUtils.showToast("开始暂停航线飞行")
-                btn_stop_spf.text = "恢复任务"
-            }else{
-                isActive = true
-                LogUtil.d(TAG, "开始继续航线飞行")
-                ToastUtils.showToast("开始继续航线飞行")
-                btn_stop_spf.text = "暂停任务"
-                // 启动任务
+        // 按钮点击事件：仿地飞行
+        btn_terrain_following_spf.setOnClickListener {
+            // 启动新的任务
+            if (hasWaylineTask == false) {  // 没有航线任务才能启动
+                ToastUtils.showToast("开始仿地飞行")
+                // 更新全局变量
+                val location = getAircraftLocation()
+                droneCurrentLocation = DJILatLng(location.latitude, location.longitude)
+
                 currentTaskJob = lifecycleScope.launch {
                     enqueueTask {
                         performTask()
+//                        sendVirtualStickParametersTest()
                     }
                 }
+
+//                btn_stop_spf.text = "暂停任务"
+//                hasGoHome = false  // 重置返航状态
+            }else{
+                ToastUtils.showToast("仿地飞行已经运行或未导入航线！")
+            }
+        }
+
+        // 自动返航
+        btn_start_gohome_spf.setOnClickListener {
+            // 如果有航线任务
+            if (hasWaylineTask)
+            {
+                if (isTerrainFollowing){
+                    LogUtil.d(TAG, "开始暂停航线飞行")
+                    ToastUtils.showToast("开始暂停航线飞行")
+                    isTerrainFollowing = false  // 暂停飞行
+                }else{
+                    btn_stop_spf.text = "暂停任务"
+                }
+                // 记录返航时航线索引
+                currentIndex--
+                goHomeWaylineIndex = currentIndex
+            }
+            // 获取FlightController实例
+            KeyManager.getInstance().performAction(
+                KeyTools.createKey(FlightControllerKey.KeyStartGoHome), object :CommonCallbacks.CompletionCallbackWithParam<EmptyMsg>{
+                    override fun onSuccess(t: EmptyMsg?) {
+                        println("自动返航已启动")
+                        LogUtil.d(TAG, "自动返航已启动")
+                    }
+                    override fun onFailure(error: IDJIError) {
+                        println("自动返航启动失败: ${error}")
+                        LogUtil.d(TAG, "自动返航已启动")
+                    }
+                })
+        }
+
+        // 按钮点击事件：停止和继续
+        btn_stop_spf.setOnClickListener {
+            // 如果有航线任务
+            if (hasWaylineTask)
+            {
+                if (isTerrainFollowing){
+                    isTerrainFollowing = false
+                    LogUtil.d(TAG, "开始暂停航线飞行")
+                    ToastUtils.showToast("开始暂停航线飞行")
+                    btn_stop_spf.text = "恢复任务"
+                }else{
+                    isTerrainFollowing = true
+                    LogUtil.d(TAG, "开始继续航线飞行")
+                    ToastUtils.showToast("开始继续航线飞行")
+                    btn_stop_spf.text = "暂停任务"
+                    // 启动任务
+                    currentTaskJob = lifecycleScope.launch {
+                        enqueueTask {
+                            performTask()
+                        }
+                    }
+                }
+
             }
         }
 
         // 按钮点击事件：断点续飞
         btn_breakpoint_resume_spf.setOnClickListener {
-            if (!isActive) {
+            // 先起飞，开启虚拟遥感
+            btn_fly_spf.performClick()
+            // 是否记录返航时索引
+            if (goHomeWaylineIndex != 0) {
                 ToastUtils.showToast("开始断点续飞")
                 // 如果已经返航并且暂停过飞行，恢复飞行
-                isActive = true
+                isTerrainFollowing = true
                 btn_stop_spf.text = "暂停任务"
-                hasReturnedHome = true  // 重置返航状态
+                goHomeWaylineIndex = 0  // 重置返航记录索引
                 currentIndex--
                 currentTaskJob = lifecycleScope.launch {
                     enqueueTask {
@@ -460,6 +512,7 @@ class WayPointV3Fragment : DJIFragment() {
                 }
             } else {
                 // 如果任务正在进行中且没有返航，无法点击断点续飞
+                ToastUtils.showToast("无人机未返航，无法执行断点续飞")
                 Toast.makeText(context, "无人机未返航，无法执行断点续飞", Toast.LENGTH_SHORT).show()
             }
         }
@@ -518,7 +571,7 @@ class WayPointV3Fragment : DJIFragment() {
 
     // 任务函数逻辑
     suspend fun performTask() {
-        // 首次运行或者继续运行，需要判断当前飞机与下一个航点的位置和高度是否一样
+        // 首次运行或者继续运行，需要读取航线
         LogUtil.d(TAG, "performTask：${currentIndex}")
         // 读取航点数据从 SharedPreferences
         val routePointsJson = WayLineDataSP.getString("routePoints", null)
@@ -530,11 +583,15 @@ class WayPointV3Fragment : DJIFragment() {
         } else {
             mutableListOf() // 如果没有数据，初始化为空的 List
         }
-
         if (routePoints.isEmpty()) {
+            ToastUtils.showToast("航线点为空，无法执行任务")
             LogUtil.d(TAG, "航线点为空，无法执行任务")
             return
         }
+
+
+        hasWaylineTask = true   // 有航线任务
+        isTerrainFollowing = true // 正在仿地飞行
 
         // 相机朝下
         LogUtil.e(TAG, "云台旋转")
@@ -550,6 +607,7 @@ class WayPointV3Fragment : DJIFragment() {
         )
         var attitude = getGimbalAttitude()
         LogUtil.e(TAG, "attitude: $attitude")
+
 
         // 调整航高和位置到第一个航点
         val location = getAircraftLocation()
@@ -572,10 +630,10 @@ class WayPointV3Fragment : DJIFragment() {
         var flyTime = kmlTime + (routePoints.size-currentIndex)*25/60
         ToastUtils.showToast( "航线预计飞行时间min:"+flyTime*100/100, Toast.LENGTH_SHORT)
 
-        if (isActive) {
-            LogUtil.d(TAG, "航线正在运行：$isActive")
+        if (isTerrainFollowing) {
+            LogUtil.d(TAG, "航线正在运行：$isTerrainFollowing")
         }else{
-            LogUtil.d(TAG, "航线已经暂停：$isActive")
+            LogUtil.d(TAG, "航线已经暂停：$isTerrainFollowing")
         }
         LogUtil.d(TAG, "当前航线routePoints.size：${routePoints.size}")
         LogUtil.d(TAG, "当前航线kmlHeight：${kmlHeight}")
@@ -583,8 +641,8 @@ class WayPointV3Fragment : DJIFragment() {
         LogUtil.d(TAG, "while：${currentIndex}")
 
         var droneLastHeight = getAircraftLocation().altitude
-        while (currentIndex < routePoints.size && isActive) {
-            LogUtil.d(TAG, "航线飞行状态：$isActive")
+        while (currentIndex < routePoints.size && isTerrainFollowing) {
+            LogUtil.d(TAG, "航线飞行状态：$isTerrainFollowing")
             // 1. 先拍照，无人机拍照
             performTakePhoto()
 
@@ -608,7 +666,7 @@ class WayPointV3Fragment : DJIFragment() {
 
             // 3. 判断转向是否过大，如果超过5度：则再次拍照，不进行仿地飞行计算；否则进行仿地飞行计算
             //    若是返航状态，则需要进行需要设置
-            if (abs(lastAzimuth - droneLastAzimuth) > 5 && hasReturnedHome == false) {
+            if (abs(lastAzimuth - droneLastAzimuth) > 5 && goHomeWaylineIndex == 0) {
                 // 再次拍照
                 performTakePhoto()
                 // 不进行仿地飞行计算：即将上一张照片置为空
@@ -640,6 +698,7 @@ class WayPointV3Fragment : DJIFragment() {
             // 基线修正
             var droneCurrentHeight = getAircraftLocation().altitude
             kmlWaypointDistance = hypot(droneLastHeight, droneCurrentHeight)
+            droneLastHeight = droneCurrentHeight
             startTime = System.nanoTime()
             LogUtil.d(TAG, "下载照片 : $path")
             var resultValue = 0.0
@@ -731,6 +790,7 @@ class WayPointV3Fragment : DJIFragment() {
         // 航线运行结束，重置索引和航线。
         if (currentIndex >= routePoints.size) {
             currentIndex = 0
+            isTerrainFollowing = false  // 暂停仿地飞行
 
             WayLineDataEdit.putInt("currentIndex", currentIndex) // 保存循环的当前索引
             routePoints = mutableListOf<DJILatLng>() // 空的航点列表
@@ -1180,7 +1240,7 @@ class WayPointV3Fragment : DJIFragment() {
     // 文本获取更新当前位置
     private fun startUpdatingAircraftLocation() {
         updateJob = CoroutineScope(Dispatchers.Main).launch {
-            while (isActive) {
+            while (isTerrainFollowing) {
                 val location = getAircraftLocation()
                 val decimalFormat = DecimalFormat("#.##")
                 tv_aircraft_location.text = "Lat: ${location.latitude}, Lon: ${location.longitude}, Alt: ${decimalFormat.format(location.altitude)}"

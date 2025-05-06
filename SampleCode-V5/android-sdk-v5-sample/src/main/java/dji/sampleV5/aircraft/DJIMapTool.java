@@ -232,6 +232,8 @@ public class DJIMapTool {
     public void UpdateWayLines(int rotate,double space){
         opts.rotate=rotate;
         opts.space=space;
+        List<DJILatLng> points= getPointsFromMarkers(flightPointMarkers);
+        LoadWayLines(points); // 更新航线图层flightPolyline
     }
 
     //由航飞区域顶点标志获取航飞区域顶点，

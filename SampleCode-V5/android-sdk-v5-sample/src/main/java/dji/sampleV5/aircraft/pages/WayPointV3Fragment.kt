@@ -196,6 +196,9 @@ class WayPointV3Fragment : DJIFragment() {
     private lateinit var WayLineDataSP: SharedPreferences
     private lateinit var WayLineDataEdit: SharedPreferences.Editor
 
+    private var currentMapType = DJIMap.MapType.NORMAL // 默认普通地图
+    private lateinit var map: DJIMap // 保存地图实例引用
+
     // 判断OpenCV是否加载成功
     private val loaderCallback: BaseLoaderCallback = object : BaseLoaderCallback(context) {
         override fun onManagerConnected(status: Int) {
@@ -235,6 +238,7 @@ class WayPointV3Fragment : DJIFragment() {
 
         //  在应用启动时，读取保存的数据：
         currentIndex = WayLineDataSP.getInt("currentIndex", 0) // 默认从0开始
+        goHomeWaylineIndex = WayLineDataSP.getInt("goHomeWaylineIndex", 0) // 默认从0开始
 
         // 初始化OpenCV
         if (!OpenCVLoader.initDebug()) {
@@ -301,9 +305,6 @@ class WayPointV3Fragment : DJIFragment() {
         createMapView(savedInstanceState)
         observeAircraftLocation()
 
-
-
-
         btn_take_photo_spf.setOnClickListener {
             ToastUtils.showToast("ToastUtils：DJI开始")
             LogUtil.d(TAG, "DJI开始")
@@ -346,6 +347,7 @@ class WayPointV3Fragment : DJIFragment() {
 ////                markWaypoint(DJIGpsUtils.gcj2wgsInChina(it), 0)
 //            }
             loadLocalPhoto() // 读取本地文件（计算基线距离）
+            LogUtil.d(TAG, "pictureArray：${pictureArray.size}")
 
             LogUtil.d(TAG, "Log：DJI开始")
             lifecycleScope.launch {
@@ -355,7 +357,8 @@ class WayPointV3Fragment : DJIFragment() {
                         val path = pictureArray[i]
                         if (path != null) {
 //                            val resultValue = downloadPhotoSuspend(path, 27.75, 0.01229, 3.3 / 1000 / 1000, requireContext()) // 27.75 23.74
-                            val resultValue = downloadPhotoSuspend(path, 11.87, 0.01229, 3.3 / 1000 / 1000, requireContext()) // 27.75 23.74 11.87
+//                            val resultValue = downloadPhotoSuspend(path, 11.87, 0.01229, 3.3 / 1000 / 1000, requireContext()) // 27.75 23.74 11.87
+                            val resultValue = downloadPhotoSuspend(path, 31.57, 0.01229, 3.3 / 1000 / 1000, requireContext()) // 27.75 23.74 11.87
                             LogUtil.d(TAG, "DJI回调返回的结果: $resultValue")
                         } else {
                             LogUtil.d(TAG, "DJI回调返回的结果: 下载失败，无法获取路径")
@@ -402,14 +405,13 @@ class WayPointV3Fragment : DJIFragment() {
             val currentTime = dateFormat.format(Date())
             gpsFileNamePath = DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), "/mediafile/GPS_$currentTime.txt")
 
-
             // 导入kml，则需要把上次任务记录的索引清空
             currentIndex=0
+            goHomeWaylineIndex = 0
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 type = "application/vnd.google-earth.kml+xml" // 过滤 KML 文件类型
                 addCategory(Intent.CATEGORY_OPENABLE)
             }
-
             // 启动文件选择器
             startActivityForResult(intent, REQUEST_CODE_IMPORT_KML)
         }
@@ -452,6 +454,9 @@ class WayPointV3Fragment : DJIFragment() {
                 // 记录返航时航线索引
                 currentIndex--
                 goHomeWaylineIndex = currentIndex
+                WayLineDataEdit.putInt("currentIndex", currentIndex) // 保存索引
+                WayLineDataEdit.putInt("goHomeWaylineIndex", goHomeWaylineIndex) // 保存索引
+                WayLineDataEdit.apply()
             }
             // 获取FlightController实例
             KeyManager.getInstance().performAction(
@@ -459,6 +464,7 @@ class WayPointV3Fragment : DJIFragment() {
                     override fun onSuccess(t: EmptyMsg?) {
                         println("自动返航已启动")
                         LogUtil.d(TAG, "自动返航已启动")
+                        hasWaylineTask = false
                     }
                     override fun onFailure(error: IDJIError) {
                         println("自动返航启动失败: ${error}")
@@ -467,36 +473,20 @@ class WayPointV3Fragment : DJIFragment() {
                 })
         }
 
-        // 按钮点击事件：停止和继续
-        btn_stop_spf.setOnClickListener {
-            // 如果有航线任务
-            if (hasWaylineTask)
-            {
-                if (isTerrainFollowing){
-                    isTerrainFollowing = false
-                    LogUtil.d(TAG, "开始暂停航线飞行")
-                    ToastUtils.showToast("开始暂停航线飞行")
-                    btn_stop_spf.text = "恢复任务"
-                }else{
-                    isTerrainFollowing = true
-                    LogUtil.d(TAG, "开始继续航线飞行")
-                    ToastUtils.showToast("开始继续航线飞行")
-                    btn_stop_spf.text = "暂停任务"
-                    // 启动任务
-                    currentTaskJob = lifecycleScope.launch {
-                        enqueueTask {
-                            performTask()
-                        }
-                    }
-                }
 
-            }
-        }
 
         // 按钮点击事件：断点续飞
         btn_breakpoint_resume_spf.setOnClickListener {
             // 先起飞，开启虚拟遥感
+            LogUtil.d(TAG, "断点续飞")
             btn_fly_spf.performClick()
+
+            //  在应用启动时，读取保存的数据：
+            currentIndex = WayLineDataSP.getInt("currentIndex", 0) // 默认从0开始
+            goHomeWaylineIndex = WayLineDataSP.getInt("goHomeWaylineIndex", 0) // 默认从0开始
+            LogUtil.d(TAG, "currentIndex:  ${currentIndex}")
+            LogUtil.d(TAG, "断点续飞:  ${goHomeWaylineIndex}")
+
             // 是否记录返航时索引
             if (goHomeWaylineIndex != 0) {
                 ToastUtils.showToast("开始断点续飞")
@@ -542,6 +532,10 @@ class WayPointV3Fragment : DJIFragment() {
             }
         }
 
+        btn_toggle_map.setOnClickListener {
+            toggleMapType()
+        }
+
     }
 
     // 定义一个全局的 Job，用于控制任务取消
@@ -571,6 +565,7 @@ class WayPointV3Fragment : DJIFragment() {
 
     // 任务函数逻辑
     suspend fun performTask() {
+        currentIndex = 55
         // 首次运行或者继续运行，需要读取航线
         LogUtil.d(TAG, "performTask：${currentIndex}")
         // 读取航点数据从 SharedPreferences
@@ -589,7 +584,6 @@ class WayPointV3Fragment : DJIFragment() {
             return
         }
 
-
         hasWaylineTask = true   // 有航线任务
         isTerrainFollowing = true // 正在仿地飞行
 
@@ -607,7 +601,6 @@ class WayPointV3Fragment : DJIFragment() {
         )
         var attitude = getGimbalAttitude()
         LogUtil.e(TAG, "attitude: $attitude")
-
 
         // 调整航高和位置到第一个航点
         val location = getAircraftLocation()
@@ -676,7 +669,6 @@ class WayPointV3Fragment : DJIFragment() {
                 editor.apply()
             }
 
-
             // 4. 仿地飞行计算并控制无人机飞行然后拍照
             LogUtil.d(TAG, "下载照片: start")
             var startTime = System.nanoTime()
@@ -696,9 +688,9 @@ class WayPointV3Fragment : DJIFragment() {
             LogUtil.d(TAG, "下载照片 耗时: $elapsedTimeInSeconds")
 
             // 基线修正
-            var droneCurrentHeight = getAircraftLocation().altitude
-            kmlWaypointDistance = hypot(droneLastHeight, droneCurrentHeight)
-            droneLastHeight = droneCurrentHeight
+//            var droneCurrentHeight = getAircraftLocation().altitude
+//            kmlWaypointDistance = hypot(droneLastHeight, droneCurrentHeight)
+//            droneLastHeight = droneCurrentHeight
             startTime = System.nanoTime()
             LogUtil.d(TAG, "下载照片 : $path")
             var resultValue = 0.0
@@ -725,20 +717,20 @@ class WayPointV3Fragment : DJIFragment() {
             LogUtil.d(TAG, "仿地飞行计算 耗时: $elapsedTimeInSeconds")
 
             // 随机数
-            resultValue = Random.nextDouble(kmlHeight * 0.8, kmlHeight * 1.2)
+            // resultValue = Random.nextDouble(kmlHeight * 0.8, kmlHeight * 1.2)
             // 随机数
 //            resultValue = kmlHeight
 
-             // 高程调整距离,调整范围不超过初始值的40%
-            if(abs(resultValue-kmlHeight)<0.5)
+             // 高程调整距离,第三个点开始调整，调整范围后高度不超过初始值的140%，不低于初始值40%
+            if(currentIndex<2 || abs(resultValue-kmlHeight)<0.5)
             {
                 resultValue = kmlHeight
-            }else if ((resultValue-kmlHeight)>kmlHeight*0.2)
+            }else if (currentIndex>=2 && (resultValue-kmlHeight)>kmlHeight*0.4)
             {
-                resultValue = kmlHeight
-            }else if ((resultValue-kmlHeight)<-kmlHeight*0.2)
+                resultValue = kmlHeight*1.4
+            }else if (currentIndex>=2 && (resultValue-kmlHeight)<-kmlHeight*0.4)
             {
-                resultValue = kmlHeight
+                resultValue = kmlHeight*0.4
             }
 //            resultValue = kmlHeight  // 1. 调整固定距离
             resultValue =  kmlHeight - resultValue
@@ -746,19 +738,45 @@ class WayPointV3Fragment : DJIFragment() {
             LogUtil.d(TAG, "调整高度：$resultValue")
             LogUtil.d(TAG, "VirtualStick: now：$currentIndex")
 
+//            if (resultValue >= -0.5 && resultValue <= 0.5){
+//                // 进行飞行
+//                moveDroneToPointRow(routePoints[currentIndex] , droneLastAzimuth)
+//            }else if (resultValue > 0.5) {
+//                // 调整高度
+//                moveDroneToPointVertical(routePoints[currentIndex] , droneLastAzimuth, resultValue)
+//                // 进行飞行
+//                moveDroneToPointRow(routePoints[currentIndex] , droneLastAzimuth)
+//            }else {
+//                // 进行飞行
+//                moveDroneToPointRow(routePoints[currentIndex] , droneLastAzimuth)
+//                // 调整高度
+//                moveDroneToPointVertical(routePoints[currentIndex] , droneLastAzimuth, resultValue)
+//            }
+
+            // 无论升高下降统一先调整高度再飞行
             if (resultValue >= -0.5 && resultValue <= 0.5){
                 // 进行飞行
                 moveDroneToPointRow(routePoints[currentIndex] , droneLastAzimuth)
-            }else if (resultValue > 0.5) {
-                // 调整高度
-                moveDroneToPointVertical(routePoints[currentIndex] , droneLastAzimuth, resultValue)
-                // 进行飞行
-                moveDroneToPointRow(routePoints[currentIndex] , droneLastAzimuth)
             }else {
-                // 进行飞行
-                moveDroneToPointRow(routePoints[currentIndex] , droneLastAzimuth)
                 // 调整高度
                 moveDroneToPointVertical(routePoints[currentIndex] , droneLastAzimuth, resultValue)
+                // 再次拍照
+                performTakePhoto()
+                // 从无人机下载照片到手柄
+                val path = try {
+                    downloadPhotoWithRetry()
+                } catch (e: Exception) {
+                    LogUtil.e(TAG, "Download failed: ${e.message}")
+                    null
+                }
+                // 将上一张照片置为当前拍摄照片
+                val sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
+                val editor = sharedPreferences.edit()
+                editor.putString("tempDataPath2", path)
+                editor.apply()
+
+                // 进行飞行
+                moveDroneToPointRow(routePoints[currentIndex] , droneLastAzimuth)
             }
 
 
@@ -1240,7 +1258,7 @@ class WayPointV3Fragment : DJIFragment() {
     // 文本获取更新当前位置
     private fun startUpdatingAircraftLocation() {
         updateJob = CoroutineScope(Dispatchers.Main).launch {
-            while (isTerrainFollowing) {
+            while (true) {
                 val location = getAircraftLocation()
                 val decimalFormat = DecimalFormat("#.##")
                 tv_aircraft_location.text = "Lat: ${location.latitude}, Lon: ${location.longitude}, Alt: ${decimalFormat.format(location.altitude)}"
@@ -1359,6 +1377,9 @@ class WayPointV3Fragment : DJIFragment() {
     var wayLinePlanDialog: Dialog? = null
     var wayLinePlanDialogIsVisible = false // 对话框显示状态变量
     var flyheight:Double = 50.0
+
+
+
     private fun initWayLinePlan() {
         // 实例化航线绘制工具
         maptool = DJIMapTool(map_widget.map ,activity)
@@ -1398,13 +1419,23 @@ class WayPointV3Fragment : DJIFragment() {
         val tv_lineSpace = wayLinePlanDialog?.findViewById<TextView>(R.id.tv_lineSpace)
         val tv_pointSpace = wayLinePlanDialog?.findViewById<TextView>(R.id.tv_pointSpace)
 
+
         val line_angle_et = wayLinePlanDialog?.findViewById<EditText>(R.id.line_angle_et)
+        val btn_line_angle = wayLinePlanDialog?.findViewById<Button>(R.id.line_angle_btn)
         val line_space_et = wayLinePlanDialog?.findViewById<EditText>(R.id.line_space_et)
 
         val btn_calculate = wayLinePlanDialog?.findViewById<Button>(R.id.btn_calculate)
         val draw_start = wayLinePlanDialog?.findViewById<Button>(R.id.draw_start)
         val draw_delete = wayLinePlanDialog?.findViewById<Button>(R.id.draw_delete)
         val output_route = wayLinePlanDialog?.findViewById<Button>(R.id.output_route)
+
+        btn_line_angle?.setOnClickListener(){
+            maptool?.UpdateWayLines(
+                line_angle_et?.text.toString().toInt(),
+                line_space_et?.text.toString().toDouble()
+            )
+            wayLinePlanDialog?.dismiss() // 隐藏对话框
+        }
 
         btn_calculate?.setOnClickListener(){
             LogUtil.d(TAG, "btn_calculate")
@@ -1561,10 +1592,16 @@ class WayPointV3Fragment : DJIFragment() {
 //            "^H101.*\\.(jpg|JPG)"
 //        )
 
+//        pictureArray = getMatchingFileNames(
+//            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/20250212_A",
+//            "^Picture_20250212_.*\\.(jpg|JPG)"
+//        )
+
+        LogUtil.d(TAG, "读取本地数据")
         pictureArray = getMatchingFileNames(
-            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/20250212_A",
-            "^Picture_20250212_.*\\.(jpg|JPG)"
-        )
+            requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString() + "/DJI_202504161026_140",
+            "^DJI_2025041610.*\\.(jpg|JPG)"
+        )  //
 
     }
 
@@ -1797,15 +1834,11 @@ class WayPointV3Fragment : DJIFragment() {
                         LogUtil.d(TAG, "kmlTime：${kmlData["time"]}")
                         LogUtil.d(TAG, "kmlWaypointDistance导入：${kmlData["waypointDistance"]}")
 
-                        //
                         // 保存航点数据到 SharedPreferences
-                        val sharedPreferences = requireContext().getSharedPreferences("WayLineData", Context.MODE_PRIVATE)
-                        val editor = sharedPreferences.edit()
-                        // 将 routePoints 转换为 JSON 字符串
-                        val gson = Gson()
+                        val gson = Gson()   // 将 routePoints 转换为 JSON 字符串
                         val routePointsJson = gson.toJson(routePoints)
-                        editor.putString("routePoints", routePointsJson) // 保存为字符串
-                        editor.apply()
+                        WayLineDataEdit.putString("routePoints", routePointsJson) // 保存为字符串
+                        WayLineDataEdit.apply()
 
                         // 显示航线和航点
                         // 清除所有标记
@@ -2064,6 +2097,7 @@ class WayPointV3Fragment : DJIFragment() {
 
     private fun createMapView(savedInstanceState: Bundle?) {
         val onMapReadyListener = MapWidget.OnMapReadyListener { map ->
+            this.map = map // 保存地图实例
             map.setMapType(DJIMap.MapType.NORMAL)
         }
         map_widget.initAMap(onMapReadyListener)
@@ -2091,6 +2125,25 @@ class WayPointV3Fragment : DJIFragment() {
 //        map_widget.setMyLocationEnabled(true) // 设置为true表示启动显示定位蓝点，false表示隐藏定位蓝点并不进行定位，默认是false。
 
 
+    }
+
+    private fun toggleMapType() {
+        currentMapType = when (currentMapType) {
+            DJIMap.MapType.NORMAL -> {
+                btn_toggle_map.text = "普通地图"
+                DJIMap.MapType.HYBRID
+            }
+            DJIMap.MapType.HYBRID -> {
+                btn_toggle_map.text = "卫星地图"
+                DJIMap.MapType.NORMAL
+            }
+            else -> DJIMap.MapType.NORMAL
+        }
+
+        // 更新地图类型
+        if (::map.isInitialized) {
+            map.setMapType(currentMapType)
+        }
     }
 
     override fun onPause() {

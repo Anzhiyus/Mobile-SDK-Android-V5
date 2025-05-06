@@ -23,18 +23,25 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import org.opencv.android.Utils;
+import org.opencv.calib3d.Calib3d;
+import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.DMatch;
 import org.opencv.core.KeyPoint;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
 import org.opencv.core.MatOfDMatch;
 import org.opencv.core.MatOfKeyPoint;
+import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
+import org.opencv.core.Size;
 import org.opencv.features2d.DescriptorMatcher;
 import org.opencv.features2d.Features2d;
 import org.opencv.features2d.ORB;
+import org.opencv.imgproc.CLAHE;
+import org.opencv.imgproc.Imgproc;
 
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -139,8 +146,8 @@ public class PhotoProcessingWorker extends Worker {
 
 
         double idw = processImageORB(img1Bitmap,img2Bitmap, FocalLength, baseLine, PixelDim);
+//        double idw = processImageMultiTemplateMatch(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
 
-//        double idw = processImageORB(img1Bitmap, img2Bitmap, FocalLength, baseLine, PixelDim);
         LogUtil.INSTANCE.d(TAG, "idw: "+Math.round(idw * 10) / 10.0 );
         // 数据暂存缓存路径
 //        tempDataPath2 = saveImageToCacheDir(context,path1,"DroneFlyTemp");
@@ -302,9 +309,17 @@ public class PhotoProcessingWorker extends Worker {
 //        img1Bitmap = getSubBitmap(img1Bitmap,10,10,2,6,3,6);
 //        img2Bitmap = getSubBitmap(img2Bitmap,10,10,2,6,3,6);
 
-        ////        // 90%重叠率，分为10x10格网，高取前50%，宽取中间40%
+//        ////        // 90%重叠率，分为10x10格网，高取前50%，宽取中间40%
+//        img1Bitmap = getSubBitmap(img1Bitmap,10,10,0,4,3,6);
+//        img2Bitmap = getSubBitmap(img2Bitmap,10,10,0,4,3,6);
+
+        ////        // 80%重叠率，分为10x10格网，高取前50%，宽取中间40%
         img1Bitmap = getSubBitmap(img1Bitmap,10,10,0,4,3,6);
         img2Bitmap = getSubBitmap(img2Bitmap,10,10,0,4,3,6);
+
+//        preprocessImages(img1Bitmap,img2Bitmap);
+
+
 
 
         long startTime = System.nanoTime();
@@ -314,6 +329,24 @@ public class PhotoProcessingWorker extends Worker {
         Mat img2 = new Mat();
         Utils.bitmapToMat(img1Bitmap, img1);    // convert original bitmap to Mat, R G B.
         Utils.bitmapToMat(img2Bitmap, img2);    // convert original bitmap to Mat, R G B
+
+
+//         1. 阴影抑制预处理
+        img1 = removeShadows(img1);
+        img2 = removeShadows(img2);
+//
+//        // 2. 三种预处理方式
+//        // 方式一：直方图均衡化
+//        img1 = equalizeHistogram(img1);
+//        img2 = equalizeHistogram(img2);
+//
+//        // 方式二：高斯模糊
+//        img1 = gaussianBlur(img1);
+//        img2 = gaussianBlur(img2);
+
+        // 方式三：边缘增强
+        img1 = enhanceEdges(img1);
+        img2 = enhanceEdges(img2);
 
         // 图像的特征点和描述符
         MatOfKeyPoint keypoints1 = new MatOfKeyPoint();
@@ -367,9 +400,12 @@ public class PhotoProcessingWorker extends Worker {
 
                 // 图像坐标系: y 坐标沿垂直方向向下增加。
                 // 当前无人机向正北飞，即同一点在当前照片y1的坐标大于上一张照片y2
-                // 航线重叠率为90%，特征点距离应该为10%。允许误差是0.5%（20像素）
-                boolean b1 = (y1-y2) > bitmapHeight*(0.1-0.05);
-                boolean b2 = (y1-y2) < bitmapHeight*(0.1+0.05);
+//                // 航线重叠率为90%，特征点距离应该为10%。允许误差是0.5%（20像素）
+//                boolean b1 = (y1-y2) > bitmapHeight*(0.1-0.05);
+//                boolean b2 = (y1-y2) < bitmapHeight*(0.1+0.05);
+                // 航线重叠率为80%，特征点距离应该为20%。允许误差是1%（20像素）
+                boolean b1 = (y1-y2) > bitmapHeight*(0.2-0.05);
+                boolean b2 = (y1-y2) < bitmapHeight*(0.2+0.1);
                 // 当前无人机向正北飞，特征点东西方向应无距离允许误差是0.4%（20像素）
                 boolean b3 = abs(x1-x2)<bitmapWidth*0.04;
 
@@ -475,6 +511,587 @@ public class PhotoProcessingWorker extends Worker {
         return idw;
     }
 
+    private double processImageTemplateMatch(Bitmap img1Bitmap, Bitmap img2Bitmap, double FocalLength, double BaseLine, double PixelDim) {
+        // 获取图像尺寸
+        int bitmapHeight = img1Bitmap.getHeight();
+        int bitmapWidth = img1Bitmap.getWidth();
+
+        // 裁剪图像中心区域作为模板（可根据实际情况调整裁剪区域）
+        int templateWidth = bitmapWidth / 4;
+        int templateHeight = bitmapHeight / 4;
+        int xOffset = (bitmapWidth - templateWidth) / 2;
+        int yOffset = (bitmapHeight - templateHeight) / 2;
+
+        // 裁剪模板区域（从第一张图像）
+        Bitmap templateBitmap = Bitmap.createBitmap(img1Bitmap, xOffset, yOffset, templateWidth, templateHeight);
+
+        // 转换为OpenCV Mat格式
+        Mat img1 = new Mat();
+        Mat img2 = new Mat();
+        Mat template = new Mat();
+        Utils.bitmapToMat(img1Bitmap, img1);
+        Utils.bitmapToMat(img2Bitmap, img2);
+        Utils.bitmapToMat(templateBitmap, template);
+
+        // 转换为灰度图像
+        Mat grayImg1 = new Mat();
+        Mat grayImg2 = new Mat();
+        Mat grayTemplate = new Mat();
+        Imgproc.cvtColor(img1, grayImg1, Imgproc.COLOR_RGB2GRAY);
+        Imgproc.cvtColor(img2, grayImg2, Imgproc.COLOR_RGB2GRAY);
+        Imgproc.cvtColor(template, grayTemplate, Imgproc.COLOR_RGB2GRAY);
+
+        // 创建结果矩阵
+        int resultCols = grayImg2.cols() - grayTemplate.cols() + 1;
+        int resultRows = grayImg2.rows() - grayTemplate.rows() + 1;
+        Mat result = new Mat(resultRows, resultCols, CvType.CV_32FC1);
+
+        // 执行模板匹配（使用归一化相关系数匹配法）
+        Imgproc.matchTemplate(grayImg2, grayTemplate, result, Imgproc.TM_CCOEFF_NORMED);
+
+        // 找到最佳匹配位置
+        Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
+        Point matchLoc = mmr.maxLoc;
+
+        // 计算位移向量
+        Point templateCenter = new Point(xOffset + templateWidth/2.0, yOffset + templateHeight/2.0);
+        Point matchedCenter = new Point(matchLoc.x + templateWidth/2.0, matchLoc.y + templateHeight/2.0);
+
+        // 计算位移（以图像中心为原点）
+        Point displacement = new Point(
+                matchedCenter.x - templateCenter.x,
+                matchedCenter.y - templateCenter.y
+        );
+
+        // 计算视差（像素单位）
+        double parallax = Math.sqrt(displacement.x * displacement.x + displacement.y * displacement.y);
+        LogUtil.INSTANCE.i(TAG, "parallax " + parallax);
+
+        // 计算航高
+        double aviationHigh = FocalLength * BaseLine / (parallax * PixelDim);
+
+        // 可视化结果（可选）
+        Mat outputImg = new Mat();
+        img2.copyTo(outputImg);
+
+        // 绘制模板区域和匹配区域
+        Imgproc.rectangle(outputImg,
+                new Point(matchLoc.x, matchLoc.y),
+                new Point(matchLoc.x + template.cols(), matchLoc.y + template.rows()),
+                new Scalar(0, 255, 0), 3);
+
+        Imgproc.rectangle(outputImg,
+                new Point(xOffset, yOffset),
+                new Point(xOffset + template.cols(), yOffset + template.rows()),
+                new Scalar(255, 0, 0), 3);
+
+        // 绘制位移向量
+        Imgproc.arrowedLine(outputImg,
+                templateCenter,
+                matchedCenter,
+                new Scalar(0, 0, 255), 3, Imgproc.LINE_AA, 0, 0.1);
+
+        // 保存结果图像
+        Bitmap outputBitmap = Bitmap.createBitmap(outputImg.cols(), outputImg.rows(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(outputImg, outputBitmap);
+        saveBitmapToFile(outputBitmap, "TemplateMatchResult");
+
+        return aviationHigh;
+    }
+
+    private double processImageMultiTemplateMatch(Bitmap img1Bitmap, Bitmap img2Bitmap, double FocalLength, double BaseLine, double PixelDim) {
+        ////        // 80%重叠率，分为10x10格网，高取前50%，宽取中间40%
+        img1Bitmap = getSubBitmap(img1Bitmap,10,10,0,4,3,6);
+        img2Bitmap = getSubBitmap(img2Bitmap,10,10,0,4,3,6);
+
+        // 转换为OpenCV Mat格式
+        Mat img1 = new Mat();
+        Mat img2 = new Mat();
+        Utils.bitmapToMat(img1Bitmap, img1);
+        Utils.bitmapToMat(img2Bitmap, img2);
+
+        // 转换为灰度图像
+        Mat grayImg1 = new Mat();
+        Mat grayImg2 = new Mat();
+        Imgproc.cvtColor(img1, grayImg1, Imgproc.COLOR_RGB2GRAY);
+        Imgproc.cvtColor(img2, grayImg2, Imgproc.COLOR_RGB2GRAY);
+
+        // 定义多个模板区域（可根据实际情况调整）
+        List<Rect> templateRegions = new ArrayList<>();
+        int templateSize = Math.min(img1.width(), img1.height()) / 4;
+
+        // 中心区域
+        templateRegions.add(new Rect(
+                img1.width()/2 - templateSize/2,
+                img1.height()/2 - templateSize/2,
+                templateSize, templateSize));
+
+        // 四个角落区域
+        templateRegions.add(new Rect(50, 50, templateSize, templateSize));
+        templateRegions.add(new Rect(img1.width()-50-templateSize, 50, templateSize, templateSize));
+        templateRegions.add(new Rect(50, img1.height()-50-templateSize, templateSize, templateSize));
+        templateRegions.add(new Rect(img1.width()-50-templateSize, img1.height()-50-templateSize, templateSize, templateSize));
+
+        List<Double> parallaxValues = new ArrayList<>();
+        Mat outputImg = new Mat();
+        img2.copyTo(outputImg);
+
+        for (Rect rect : templateRegions) {
+            // 提取模板
+            Mat template = new Mat(grayImg1, rect);
+
+            // 创建结果矩阵
+            int resultCols = grayImg2.cols() - template.cols() + 1;
+            int resultRows = grayImg2.rows() - template.rows() + 1;
+            Mat result = new Mat(resultRows, resultCols, CvType.CV_32FC1);
+
+            // 执行模板匹配
+            Imgproc.matchTemplate(grayImg2, template, result, Imgproc.TM_CCOEFF_NORMED);
+
+            // 找到最佳匹配位置
+            Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
+            Point matchLoc = mmr.maxLoc;
+
+            // 计算位移向量
+            Point templateCenter = new Point(rect.x + rect.width/2.0, rect.y + rect.height/2.0);
+            Point matchedCenter = new Point(matchLoc.x + rect.width/2.0, matchLoc.y + rect.height/2.0);
+
+            // 计算视差
+            double parallax = Math.sqrt(
+                    Math.pow(matchedCenter.x - templateCenter.x, 2) +
+                            Math.pow(matchedCenter.y - templateCenter.y, 2));
+
+            parallaxValues.add(parallax);
+
+            // 绘制匹配结果（可视化）
+            Imgproc.rectangle(outputImg,
+                    new Point(rect.x, rect.y),
+                    new Point(rect.x + rect.width, rect.y + rect.height),
+                    new Scalar(255, 0, 0), 2);
+
+            Imgproc.rectangle(outputImg,
+                    matchLoc,
+                    new Point(matchLoc.x + template.cols(), matchLoc.y + template.rows()),
+                    new Scalar(0, 255, 0), 2);
+
+            Imgproc.arrowedLine(outputImg,
+                    templateCenter,
+                    matchedCenter,
+                    new Scalar(0, 0, 255), 2, Imgproc.LINE_AA, 0, 0.1);
+        }
+
+        // 计算中值视差
+        Collections.sort(parallaxValues);
+        double medianParallax = parallaxValues.get(parallaxValues.size() / 2);
+
+        // 保存结果图像
+        Bitmap outputBitmap = Bitmap.createBitmap(outputImg.cols(), outputImg.rows(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(outputImg, outputBitmap);
+        saveBitmapToFile(outputBitmap, "MultiTemplateMatchResult");
+
+        // 计算航高
+        return FocalLength * BaseLine / (medianParallax * PixelDim);
+    }
+
+    private Bitmap preprocessImages(Bitmap img1Bitmap, Bitmap img2Bitmap) {
+        // 转换为OpenCV Mat格式
+        Mat img1 = new Mat();
+        Mat img2 = new Mat();
+        Utils.bitmapToMat(img1Bitmap, img1);
+        Utils.bitmapToMat(img2Bitmap, img2);
+
+        // 1. 阴影抑制预处理
+        Mat img1NoShadow = removeShadows(img1);
+        Mat img2NoShadow = removeShadows(img2);
+
+        // 2. 三种预处理方式
+        // 方式一：直方图均衡化
+        Mat img1Eq = equalizeHistogram(img1NoShadow);
+        Mat img2Eq = equalizeHistogram(img2NoShadow);
+
+        // 方式二：高斯模糊
+        Mat img1Blur = gaussianBlur(img1NoShadow);
+        Mat img2Blur = gaussianBlur(img2NoShadow);
+
+        // 方式三：边缘增强
+        Mat img1Edge = enhanceEdges(img1NoShadow);
+        Mat img2Edge = enhanceEdges(img2NoShadow);
+
+        // 将结果拼接为一张大图用于显示（实际使用时选择一种预处理方式即可）
+        Mat result = combineResults(img1, img1Eq, img1Blur, img1Edge,
+                img2, img2Eq, img2Blur, img2Edge);
+
+        // 转换为Bitmap返回
+        Bitmap resultBitmap = Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(result, resultBitmap);
+        saveBitmapToFile(resultBitmap, "preprocessImages3");
+
+        return resultBitmap;
+    }
+
+    // ========== 阴影抑制 ==========
+    private Mat removeShadows(Mat src) {
+        // 使用Retinex算法抑制阴影
+        Mat fImg = new Mat();
+        src.convertTo(fImg, CvType.CV_32F);
+
+        // 分离通道处理彩色图像
+        List<Mat> channels = new ArrayList<>();
+        Core.split(fImg, channels);
+
+        for (int i = 0; i < channels.size(); i++) {
+            Mat channel = channels.get(i);
+            Core.log(channel, channel);
+
+            // 大核高斯模糊模拟光照分量
+            Mat blur = new Mat();
+            Imgproc.GaussianBlur(channel, blur, new Size(201, 201), 0);
+            Core.log(blur, blur);
+
+            // 减去光照分量
+            Core.subtract(channel, blur, channel);
+
+            // 归一化
+            Core.normalize(channel, channel, 0, 255, Core.NORM_MINMAX);
+            channel.convertTo(channel, CvType.CV_8U);
+        }
+
+        Mat dst = new Mat();
+        Core.merge(channels, dst);
+        return dst;
+    }
+
+    // ========== 直方图均衡化 ==========
+    private Mat equalizeHistogram(Mat src) {
+        Mat dst = new Mat();
+
+        if (src.channels() > 1) {
+            // 彩色图像使用CLAHE
+            List<Mat> channels = new ArrayList<>();
+            Core.split(src, channels);
+
+            CLAHE clahe = Imgproc.createCLAHE();
+            clahe.setClipLimit(3.0);
+
+            for (int i = 0; i < channels.size(); i++) {
+                clahe.apply(channels.get(i), channels.get(i));
+            }
+
+            Core.merge(channels, dst);
+        } else {
+            // 灰度图像直接均衡化
+            Imgproc.equalizeHist(src, dst);
+        }
+
+        return dst;
+    }
+
+    // ========== 高斯模糊 ==========
+    private Mat gaussianBlur(Mat src) {
+        Mat dst = new Mat();
+
+        // 先进行小核模糊去噪
+        Imgproc.GaussianBlur(src, dst, new Size(3, 3), 0);
+
+        // 保持边缘的内部模糊（双边滤波）
+        Imgproc.bilateralFilter(dst, dst, 9, 75, 75);
+
+        return dst;
+    }
+
+    // ========== 边缘增强 ==========
+    private Mat enhanceEdges(Mat src) {
+        Mat gray = new Mat();
+        if (src.channels() > 1) {
+            Imgproc.cvtColor(src, gray, Imgproc.COLOR_BGR2GRAY);
+        } else {
+            gray = src.clone();
+        }
+
+        // Sobel边缘检测
+        Mat gradX = new Mat(), gradY = new Mat();
+        Mat absGradX = new Mat(), absGradY = new Mat();
+
+        Imgproc.Sobel(gray, gradX, CvType.CV_16S, 1, 0, 3);
+        Imgproc.Sobel(gray, gradY, CvType.CV_16S, 0, 1, 3);
+
+        Core.convertScaleAbs(gradX, absGradX);
+        Core.convertScaleAbs(gradY, absGradY);
+
+        // 合并梯度
+        Mat edges = new Mat();
+        Core.addWeighted(absGradX, 0.5, absGradY, 0.5, 0, edges);
+
+        // 增强边缘：原图 + 边缘
+        Mat enhanced = new Mat();
+        Core.addWeighted(gray, 1.0, edges, 0.7, 0, enhanced);
+
+        return enhanced;
+    }
+
+    // ========== 结果拼接 ==========
+    private Mat combineResults(Mat img1, Mat img1Eq, Mat img1Blur, Mat img1Edge,
+                               Mat img2, Mat img2Eq, Mat img2Blur, Mat img2Edge) {
+        // 调整大小一致
+        Size size = new Size(300, 200);
+        Imgproc.resize(img1, img1, size);
+        Imgproc.resize(img1Eq, img1Eq, size);
+        Imgproc.resize(img1Blur, img1Blur, size);
+        Imgproc.resize(img1Edge, img1Edge, size);
+        Imgproc.resize(img2, img2, size);
+        Imgproc.resize(img2Eq, img2Eq, size);
+        Imgproc.resize(img2Blur, img2Blur, size);
+        Imgproc.resize(img2Edge, img2Edge, size);
+
+        // 添加标签
+        img1 = putText(img1, "Original 1");
+        img1Eq = putText(img1Eq, "HistEqual");
+        img1Blur = putText(img1Blur, "GaussBlur");
+        img1Edge = putText(img1Edge, "EdgeEnhance");
+        img2 = putText(img2, "Original 2");
+        img2Eq = putText(img2Eq, "HistEqual");
+        img2Blur = putText(img2Blur, "GaussBlur");
+        img2Edge = putText(img2Edge, "EdgeEnhance");
+
+        // 水平拼接
+        Mat row1 = new Mat(), row2 = new Mat();
+        List<Mat> list1 = Arrays.asList(img1, img1Eq, img1Blur, img1Edge);
+        List<Mat> list2 = Arrays.asList(img2, img2Eq, img2Blur, img2Edge);
+        Core.hconcat(list1, row1);
+        Core.hconcat(list2, row2);
+
+        // 垂直拼接
+        Mat result = new Mat();
+        Core.vconcat(Arrays.asList(row1, row2), result);
+
+        return result;
+    }
+
+    private Mat putText(Mat src, String text) {
+        Mat dst = src.clone();
+        Imgproc.putText(dst, text, new Point(10, 30),
+                Imgproc.FONT_HERSHEY_SIMPLEX, 0.7,
+                new Scalar(255, 255, 255), 2);
+        return dst;
+    }
+
+    /**
+     * 对相邻图像进行特征提取和计算航高（完整无省略版）
+     * @param img1Bitmap     第一幅图像（必须为正下拍摄，无天空区域）
+     * @param img2Bitmap     第二幅图像（与img1Bitmap为连续帧，75%重叠率）
+     * @param FocalLength    相机焦距（单位：mm）
+     * @param BaseLine       基线距离（两拍摄位置的实际距离，单位：m）
+     * @param PixelDim       像元尺寸（单位：mm/像素）
+     * @return               计算的航高（单位：m）
+     */
+    private double processImageORBNew(Bitmap img1Bitmap, Bitmap img2Bitmap,
+                                   double FocalLength, double BaseLine, double PixelDim) {
+        LogUtil.INSTANCE.d(TAG, "新 processImageORB: ");
+        // === 1. 初始化及图像预处理 ===
+        long startTime = System.nanoTime();
+
+        // 转换为OpenCV Mat对象（保留原始图像）
+        Mat img1Original = new Mat();
+        Mat img2Original = new Mat();
+        Utils.bitmapToMat(img1Bitmap, img1Original);
+        Utils.bitmapToMat(img2Bitmap, img2Original);
+
+        // 显式转换为灰度图（确保ORB处理一致性）
+        Mat gray1Original = new Mat();
+        Mat gray2Original = new Mat();
+        Imgproc.cvtColor(img1Original, gray1Original, Imgproc.COLOR_RGB2GRAY);
+        Imgproc.cvtColor(img2Original, gray2Original, Imgproc.COLOR_RGB2GRAY);
+
+        // 降采样处理（平衡速度与精度）
+        double scaleFactor = 0.5; // 缩放比例
+        double originalHeight = gray1Original.rows(); // 原始图像高度（用于后续重叠率计算）
+        Mat gray1 = new Mat();
+        Mat gray2 = new Mat();
+        Imgproc.resize(gray1Original, gray1, new Size(), scaleFactor, scaleFactor, Imgproc.INTER_AREA);
+        Imgproc.resize(gray2Original, gray2, new Size(), scaleFactor, scaleFactor, Imgproc.INTER_AREA);
+
+        LogUtil.INSTANCE.d(TAG, "新 2. ORB特征提取: ");
+
+        // === 2. ORB特征提取 ===
+        // 配置ORB参数（针对无人机场景优化）
+        ORB orb = ORB.create();
+        orb.setMaxFeatures(2000);       // 增加特征点数量
+        orb.setScaleFactor(1.2f);       // 金字塔缩放因子
+        orb.setEdgeThreshold(15);       // 边缘阈值
+        orb.setPatchSize(31);           // 特征描述符区域大小
+
+        // 提取特征点和描述符
+        MatOfKeyPoint keypoints1 = new MatOfKeyPoint();
+        Mat descriptors1 = new Mat();
+        MatOfKeyPoint keypoints2 = new MatOfKeyPoint();
+        Mat descriptors2 = new Mat();
+        orb.detectAndCompute(gray1, new Mat(), keypoints1, descriptors1);
+        orb.detectAndCompute(gray2, new Mat(), keypoints2, descriptors2);
+
+
+        LogUtil.INSTANCE.d(TAG, "新 3. 特征匹配: ");
+        // === 3. 特征匹配 ===
+        // 使用汉明距离的暴力匹配器
+        DescriptorMatcher matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING);
+        List<MatOfDMatch> knnMatches = new ArrayList<>();
+        matcher.knnMatch(descriptors1, descriptors2, knnMatches, 2); // k=2的最近邻匹配
+
+        // 应用比值测试（Lowe's ratio test）筛选优质匹配
+        float ratioThresh = 0.7f;
+        List<DMatch> goodMatchesList = new ArrayList<>();
+        for (MatOfDMatch matOfDMatch : knnMatches) {
+            DMatch[] matches = matOfDMatch.toArray();
+            if (matches.length < 2) continue;
+
+            // 比值测试：最优匹配距离需显著小于次优匹配
+            if (matches[0].distance < ratioThresh * matches[1].distance) {
+                goodMatchesList.add(matches[0]);
+            }
+        }
+
+        // 转换为MatOfDMatch格式（用于后续可视化）
+        MatOfDMatch goodMatches = new MatOfDMatch();
+        goodMatches.fromList(goodMatchesList);
+        LogUtil.INSTANCE.d(TAG, "新 4. 运动模型拟合: ");
+        // === 4. 运动模型拟合 ===
+        // 准备匹配点坐标（降采样图像坐标系）
+        MatOfPoint2f pts1 = new MatOfPoint2f();
+        MatOfPoint2f pts2 = new MatOfPoint2f();
+        List<Point> pts1List = new ArrayList<>();
+        List<Point> pts2List = new ArrayList<>();
+        for (DMatch m : goodMatchesList) {
+            pts1List.add(keypoints1.toList().get(m.queryIdx).pt);
+            pts2List.add(keypoints2.toList().get(m.trainIdx).pt);
+        }
+        pts1.fromList(pts1List);
+        pts2.fromList(pts2List);
+
+        // 使用RANSAC拟合相似变换模型（旋转+平移+缩放）
+        // 转换 MatOfPoint2f 到 Mat（部分Android版本需要）
+        Mat pts1Mat = new Mat();
+        Mat pts2Mat = new Mat();
+        pts1.convertTo(pts1Mat, CvType.CV_32F);
+        pts2.convertTo(pts2Mat, CvType.CV_32F);
+
+        // 使用最简参数版本（兼容所有OpenCV Android版本）
+        Mat affine = Calib3d.estimateAffinePartial2D(
+                pts1Mat,  // 输入点集1（Mat类型）
+                pts2Mat,  // 输入点集2（Mat类型）
+                new Mat(), // 内点标记（可选）
+                Calib3d.RANSAC,
+                2.0,      // 最大重投影误差（像素）
+                2000      // 最大迭代次数
+        );
+
+        // 检查结果有效性
+        if (affine.empty()) {
+            Log.e("OpenCV", "运动估计失败");
+            return -1;
+        }
+
+        // 安全获取位移参数
+        double dyScaled = affine.get(1, 2)[0];
+
+        LogUtil.INSTANCE.d(TAG, "新 5. 位移还原与航高计算: ");
+        // === 5. 位移还原与航高计算 ===
+        // 关键步骤：将位移还原到原始分辨率
+        double dyOriginal = dyScaled / scaleFactor;
+
+        // 计算实际重叠率（基于原始图像高度）
+        double actualOverlap = 1 - (Math.abs(dyOriginal) / originalHeight);
+
+        // 动态基线校正（若实际重叠率与标称值75%偏差>15%，则使用标称基线）
+        double effectiveBaseline = Math.abs(actualOverlap - 0.75) > 0.15 ?
+                BaseLine : BaseLine * (0.75 / actualOverlap);
+
+        // 航高计算公式：H = (f * B) / (视差 * 像元尺寸)
+        double modelBasedHeight = FocalLength * effectiveBaseline / (Math.abs(dyOriginal) * PixelDim);
+        LogUtil.INSTANCE.d(TAG, "新 6. 中值验证（备用方案）: ");
+        // === 6. 中值验证（备用方案） ===
+        // 为每个优质匹配点计算独立航高
+        List<Double> individualHeights = new ArrayList<>();
+        for (DMatch m : goodMatchesList) {
+            Point p1 = keypoints1.toList().get(m.queryIdx).pt;
+            Point p2 = keypoints2.toList().get(m.trainIdx).pt;
+            double parallax = Math.abs((p1.y - p2.y) / scaleFactor); // 还原到原始分辨率
+            individualHeights.add(FocalLength * effectiveBaseline / (parallax * PixelDim));
+        }
+
+        // 计算中值航高
+        Collections.sort(individualHeights);
+        double medianHeight = individualHeights.get(individualHeights.size() / 2);
+
+        // 最终决策：若模型拟合与中值差异>10%，使用中值结果
+        double finalHeight = Math.abs(modelBasedHeight - medianHeight) > 0.1 * medianHeight ?
+                medianHeight : modelBasedHeight;
+        LogUtil.INSTANCE.d(TAG, "新 7. 日志与调试输出 : ");
+        // === 7. 日志与调试输出 ===
+        long endTime = System.nanoTime();
+        double processTimeMs = (endTime - startTime) / 1e6;
+
+        Log.d("航高计算", String.format(
+                "匹配点数量: %d | 降采样位移: %.2fpx | 原始位移: %.2fpx\n" +
+                        "模型航高: %.2fm | 中值航高: %.2fm | 最终航高: %.2fm\n" +
+                        "耗时: %.2fms",
+                goodMatchesList.size(), dyScaled, dyOriginal,
+                modelBasedHeight, medianHeight, finalHeight,
+                processTimeMs
+        ));
+
+        // === 8. 可视化调试（可选） ===
+        // 绘制匹配结果（降采样图像坐标系）
+        Mat outputImg = new Mat();
+        Features2d.drawMatches(
+                gray1, keypoints1, gray2, keypoints2, goodMatches, outputImg,
+                new Scalar(0, 255, 0), // 匹配线颜色（绿色）
+                new Scalar(255, 0, 0), // 特征点颜色（红色）
+                new MatOfByte(),
+                Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+        );
+
+        Bitmap outputbitmap = Bitmap.createBitmap(outputImg.cols(), outputImg.rows(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(outputImg, outputbitmap);
+        // 保存可视化结果到文件（调试用）
+        saveBitmapToFile(outputbitmap, "ProcessedImages");
+
+        if (Double.isInfinite(finalHeight)) {
+            Log.w("HeightCal", "无效航高（视差为零），返回0");
+            return 0;
+        }
+
+        if (Double.isNaN(finalHeight)) {
+            Log.w("HeightCal", "非数字航高，返回0");
+            return 0;
+        }
+
+        if (finalHeight <= 0) {
+            Log.w("HeightCal", "负航高值，返回0");
+            return 0;
+        }
+
+        return finalHeight;
+    }
+
+    /** 保存调试图像到文件 */
+    private void saveDebugImage(Mat mat, String prefix) {
+        Bitmap bitmap = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(mat, bitmap);
+        // 实现保存逻辑（需处理Android文件权限）
+        // ...
+    }
+
+    /** 计算数值中值 */
+    private double calculateMedian(List<Double> values) {
+        Collections.sort(values);
+        int middle = values.size() / 2;
+        if (values.size() % 2 == 1) {
+            return values.get(middle);
+        } else {
+            return (values.get(middle - 1) + values.get(middle)) / 2.0;
+        }
+    }
+
+
     /** 反距离加权平均
      *
      * @param values 数值
@@ -568,6 +1185,7 @@ public class PhotoProcessingWorker extends Worker {
                                                  double processNoise1, double measurementNoise1,
                                                  double processNoise2, double measurementNoise2) {
         // processNoise1越小越平滑，measurementNoise1相反，并且两者作用好像类似即只需要调一个参数即可
+        //若两级滤波，可设第一级processNoise1>processNoise2，第二级measurementNoise2>measurementNoise1以分层过滤不同频段的噪声。
         // 如果已有数据为空，初始化第一个数据点
         if (existingData.isEmpty()) {
             existingData.add(newData);
@@ -603,7 +1221,7 @@ public class PhotoProcessingWorker extends Worker {
         LogUtil.INSTANCE.d(TAG, "estimatedError2: "+estimatedError2);
 
         // 将二次滤波的结果添加到数据列表中
-        existingData.add(Math.round(estimatedValue2 * 10) / 10.0 );
+        existingData.add(Math.round(estimatedValue2 * 100) / 100.0 );
         return existingData;
     }
 

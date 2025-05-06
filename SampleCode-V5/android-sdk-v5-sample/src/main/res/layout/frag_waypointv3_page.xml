@@ -270,6 +270,22 @@
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@+id/btn_download_photo_spf"/>
 
+            <Button
+                android:id="@+id/btn_toggle_map"
+                style="@style/main_fragment_btn"
+                android:text="切换地图"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_localcomputation_spf"/>
+
+            <Button
+                android:id="@+id/btn_zhanwei"
+                style="@style/main_fragment_btn"
+                android:text="占位"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_toggle_map"/>
+
 
 
         </androidx.constraintlayout.widget.ConstraintLayout>

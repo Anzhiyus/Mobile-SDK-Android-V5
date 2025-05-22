@@ -37,8 +37,15 @@
 
         <activity
             android:name=".DroneActivity"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat.Light"/>
+            android:screenOrientation="landscape"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.Light">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <meta-data
             android:name="com.dji.sdk.API_KEY"
@@ -47,14 +54,9 @@
         <activity
             android:name=".DJIAircraftMainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
-            android:exported="true"
+            android:exported="false"
             android:screenOrientation="landscape"
             android:theme="@style/full_screen_theme">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
         </activity>
         <activity
             android:name=".UsbAttachActivity"

@@ -1,25 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout  xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".DroneActivity">
 
-    <!-- ImageView 用于显示图像 -->
-    <ImageView
-        android:id="@+id/imageView"
+
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:contentDescription="Display Image"
-        android:scaleType="centerCrop"
-        android:layout_gravity="center" />
-
-
-<!--    <LinearLayout-->
-<!--        android:layout_width="match_parent"-->
-<!--        android:layout_height="match_parent"-->
-<!--        android:orientation="vertical">-->
+        android:layout_height="match_parent"
+        android:orientation="horizontal">
 <!--        <Button-->
 <!--            android:id="@+id/btn_take_photo"-->
 <!--            android:layout_width="match_parent"-->
@@ -35,19 +26,19 @@
 <!--            android:onClick="initDownloadPhoto"-->
 <!--            android:textColor="@color/black"/>-->
 
-<!--        <FrameLayout-->
-<!--            android:id="@+id/fragment_container"-->
-<!--            android:layout_width="match_parent"-->
-<!--            android:layout_height="match_parent">-->
+        <FrameLayout
+            android:id="@+id/fragment_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
 
-<!--            &lt;!&ndash; 这个容器将用于显示 FragmentA &ndash;&gt;-->
+            <!-- 这个容器将用于显示 FragmentA -->
 
-<!--        </FrameLayout>-->
+        </FrameLayout>
 
-<!--    </LinearLayout>-->
-
-
+    </LinearLayout>
 
 
 
-</LinearLayout >
+
+
+</androidx.constraintlayout.widget.ConstraintLayout>

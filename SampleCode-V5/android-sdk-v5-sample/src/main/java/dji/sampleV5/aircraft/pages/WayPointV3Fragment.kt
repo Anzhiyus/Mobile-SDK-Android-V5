@@ -39,9 +39,11 @@ import com.dji.wpmzsdk.common.utils.kml.model.WaypointActionType
 import com.dji.wpmzsdk.manager.WPMZManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import dji.sampleV5.aircraft.DJIAircraftMainActivity
 import dji.sampleV5.aircraft.DJIMapTool
 import dji.sampleV5.aircraft.PhotoProcessingWorker
 import dji.sampleV5.aircraft.R
+import dji.sampleV5.aircraft.djicontroller.FunctionType
 import dji.sampleV5.aircraft.djicontroller.LogUtil
 import dji.sampleV5.aircraft.models.BasicAircraftControlVM
 import dji.sampleV5.aircraft.models.MediaVM
@@ -70,6 +72,7 @@ import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.common.utils.GpsUtils
 import dji.v5.manager.KeyManager
+import dji.v5.manager.aircraft.simulator.InitializationSettings
 import dji.v5.manager.aircraft.simulator.SimulatorManager
 import dji.v5.manager.aircraft.waypoint3.model.WaypointMissionExecuteState
 import dji.v5.manager.datacenter.media.MediaFile
@@ -91,6 +94,11 @@ import dji.v5.ux.mapkit.core.models.annotations.DJIPolylineOptions
 import dji.v5.ux.mapkit.core.utils.DJIGpsUtils
 import io.reactivex.rxjava3.disposables.Disposable
 import kotlinx.android.synthetic.main.dialog_add_waypoint.view.*
+import kotlinx.android.synthetic.main.frag_simulator_page.btn_enable_simulator
+import kotlinx.android.synthetic.main.frag_simulator_page.simulator_gps_num_et
+import kotlinx.android.synthetic.main.frag_simulator_page.simulator_lat_et
+import kotlinx.android.synthetic.main.frag_simulator_page.simulator_lng_et
+import kotlinx.android.synthetic.main.frag_simulator_page.simulator_state_info_tv
 import kotlinx.android.synthetic.main.frag_virtual_stick_page.widget_horizontal_situation_indicator
 import kotlinx.android.synthetic.main.frag_waypointv3_page.*
 import kotlinx.android.synthetic.main.spf_dialog_waylineplan.*
@@ -199,6 +207,8 @@ class WayPointV3Fragment : DJIFragment() {
     private var currentMapType = DJIMap.MapType.NORMAL // 默认普通地图
     private lateinit var map: DJIMap // 保存地图实例引用
 
+    private var functionType: FunctionType? = null
+
     // 判断OpenCV是否加载成功
     private val loaderCallback: BaseLoaderCallback = object : BaseLoaderCallback(context) {
         override fun onManagerConnected(status: Int) {
@@ -215,11 +225,99 @@ class WayPointV3Fragment : DJIFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View? {
-        return inflater.inflate(R.layout.frag_waypointv3_page, container, false)
+        val view = inflater.inflate(R.layout.frag_waypointv3_page, container, false)
+        // 在 onCreateView 中获取参数（早于 onViewCreated）
+        arguments?.let {
+            functionType = it.getSerializable("FUNCTION_TYPE") as? FunctionType
+        }
+        return view
     }
+
+    private fun setupFunctionSpecificUI(view: View) {
+        LogUtil.d(TAG, "setupFunctionSpecificUI")
+        when (functionType) {
+            FunctionType.WAYPOINT_PLANNING -> {
+                // 显示航线规划特有的控件（如航点编辑工具）
+                view.findViewById<Button>(R.id.btn_waylineplan_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_input_kml_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_fly_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_terrain_following_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_stop_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_breakpoint_resume_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_take_photo_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_download_photo_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_localcomputation_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_toggle_map)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_open_simulator)?.visibility = View.GONE
+
+                LogUtil.d(TAG, "显示航线规划特有的控件")
+            }
+
+            FunctionType.WAYPOINT_FLIGHT -> {
+                // 显示航线飞行特有的控件（如开始/暂停按钮）
+                view.findViewById<Button>(R.id.btn_waylineplan_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_input_kml_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_fly_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_terrain_following_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_stop_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_breakpoint_resume_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_take_photo_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_download_photo_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_localcomputation_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_toggle_map)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_open_simulator)?.visibility = View.GONE
+
+                // 设置飞行相关监听器
+                LogUtil.d(TAG, "显示航线飞行特有的控件")
+            }
+
+            FunctionType.MANUAL_FLIGHT -> {
+                // 显示手动飞行控件（如虚拟摇杆）
+                view.findViewById<Button>(R.id.btn_waylineplan_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_input_kml_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_fly_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_terrain_following_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_stop_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_breakpoint_resume_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_take_photo_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_download_photo_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_localcomputation_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_toggle_map)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_open_simulator)?.visibility = View.GONE
+                // 初始化摇杆控制逻辑
+            }
+
+            FunctionType.INDOOR_SIMULATION -> {
+                // 显示室内模拟特有的控件（如模拟设置）
+                view.findViewById<Button>(R.id.btn_waylineplan_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_input_kml_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_fly_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_terrain_following_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_stop_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_breakpoint_resume_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_take_photo_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_download_photo_spf)?.visibility = View.GONE
+                view.findViewById<Button>(R.id.btn_localcomputation_spf)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_toggle_map)?.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.btn_open_simulator)?.visibility = View.VISIBLE
+                // 初始化模拟环境
+            }
+
+            else -> {
+                // 默认情况或错误处理
+                LogUtil.d(TAG, "默认情况或错误处理")
+            }
+        }
+    }
+
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        setupFunctionSpecificUI(view)
+
+        // 获取传递的功能类型参数
+//        functionType = arguments?.getSerializable("FUNCTION_TYPE") as? FunctionType
 
         WayLineDataSP = requireContext().getSharedPreferences("WayLineData", Context.MODE_PRIVATE)
         WayLineDataEdit = WayLineDataSP.edit()
@@ -379,7 +477,6 @@ class WayPointV3Fragment : DJIFragment() {
             }else{
                 // 开启虚拟遥感
                 initBtnClickListener()
-
             }
 
             // 起飞
@@ -424,6 +521,7 @@ class WayPointV3Fragment : DJIFragment() {
                 // 更新全局变量
                 val location = getAircraftLocation()
                 droneCurrentLocation = DJILatLng(location.latitude, location.longitude)
+//                currentIndex = 0
 
                 currentTaskJob = lifecycleScope.launch {
                     enqueueTask {
@@ -451,12 +549,12 @@ class WayPointV3Fragment : DJIFragment() {
                 }else{
                     btn_stop_spf.text = "暂停任务"
                 }
-                // 记录返航时航线索引
-                currentIndex--
-                goHomeWaylineIndex = currentIndex
-                WayLineDataEdit.putInt("currentIndex", currentIndex) // 保存索引
-                WayLineDataEdit.putInt("goHomeWaylineIndex", goHomeWaylineIndex) // 保存索引
-                WayLineDataEdit.apply()
+//                // 记录返航时航线索引
+//                currentIndex--
+//                goHomeWaylineIndex = currentIndex
+//                WayLineDataEdit.putInt("currentIndex", currentIndex) // 保存索引
+//                WayLineDataEdit.putInt("goHomeWaylineIndex", goHomeWaylineIndex) // 保存索引
+//                WayLineDataEdit.apply()
             }
             // 获取FlightController实例
             KeyManager.getInstance().performAction(
@@ -483,7 +581,8 @@ class WayPointV3Fragment : DJIFragment() {
 
             //  在应用启动时，读取保存的数据：
             currentIndex = WayLineDataSP.getInt("currentIndex", 0) // 默认从0开始
-            goHomeWaylineIndex = WayLineDataSP.getInt("goHomeWaylineIndex", 0) // 默认从0开始
+            goHomeWaylineIndex = currentIndex
+//            goHomeWaylineIndex = WayLineDataSP.getInt("goHomeWaylineIndex", 0) // 默认从0开始
             LogUtil.d(TAG, "currentIndex:  ${currentIndex}")
             LogUtil.d(TAG, "断点续飞:  ${goHomeWaylineIndex}")
 
@@ -494,7 +593,7 @@ class WayPointV3Fragment : DJIFragment() {
                 isTerrainFollowing = true
                 btn_stop_spf.text = "暂停任务"
                 goHomeWaylineIndex = 0  // 重置返航记录索引
-                currentIndex--
+//                currentIndex--
                 currentTaskJob = lifecycleScope.launch {
                     enqueueTask {
                         performTask()
@@ -536,6 +635,42 @@ class WayPointV3Fragment : DJIFragment() {
             toggleMapType()
         }
 
+        btn_home_page.setOnClickListener {
+            // 创建一个 Intent，指向 DJIAircraftMainActivity
+            val intent = Intent(requireActivity(), DJIAircraftMainActivity::class.java)
+            // 启动目标 Activity
+            startActivity(intent)
+        }
+
+        btn_open_simulator.setOnClickListener {
+            try {
+                // 获取飞机当前位置
+//                val aircraftLocation = getAircraftLocation()
+//                val coordinate2D =  LocationCoordinate2D(aircraftLocation.latitude, aircraftLocation.longitude )
+
+                val coordinate2D = LocationCoordinate2D(22.5797650, 113.941171)
+
+                // 创建模拟器初始化数据（默认 12 颗 GPS 卫星）
+                val data = InitializationSettings.createInstance(coordinate2D, 15)
+
+                // 启动模拟器
+                simulatorVM.enableSimulator(data, object : CommonCallbacks.CompletionCallback {
+                    override fun onSuccess() {
+                        ToastUtils.showToast("模拟器启动成功")
+//                        mainHandler.post {
+//                            simulator_state_info_tv?.setTextColor(Color.BLACK)
+//                        }
+                    }
+
+                    override fun onFailure(error: IDJIError) {
+                        ToastUtils.showToast("模拟器启动失败: ${error.description()}")
+                    }
+                })
+            } catch (e: Exception) {
+                ToastUtils.showToast("发生错误: ${e.message}")
+            }
+        }
+
     }
 
     // 定义一个全局的 Job，用于控制任务取消
@@ -565,7 +700,7 @@ class WayPointV3Fragment : DJIFragment() {
 
     // 任务函数逻辑
     suspend fun performTask() {
-        currentIndex = 55
+
         // 首次运行或者继续运行，需要读取航线
         LogUtil.d(TAG, "performTask：${currentIndex}")
         // 读取航点数据从 SharedPreferences
@@ -636,6 +771,10 @@ class WayPointV3Fragment : DJIFragment() {
         var droneLastHeight = getAircraftLocation().altitude
         while (currentIndex < routePoints.size && isTerrainFollowing) {
             LogUtil.d(TAG, "航线飞行状态：$isTerrainFollowing")
+
+            WayLineDataEdit.putInt("currentIndex", currentIndex-1) // 保存循环的当前索引
+            WayLineDataEdit.apply()
+
             // 1. 先拍照，无人机拍照
             performTakePhoto()
 
@@ -2029,7 +2168,6 @@ class WayPointV3Fragment : DJIFragment() {
         )
     }
     fun grantUriPermission(data: Intent?) {
-
         val uri = data!!.data
         requireActivity().grantUriPermission(getPackageName(), uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                 Intent.FLAG_GRANT_READ_URI_PERMISSION)

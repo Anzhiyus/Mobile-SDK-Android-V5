@@ -8,11 +8,6 @@
 
 
 
-
-
-
-
-
     <dji.v5.ux.core.widget.hsi.HorizontalSituationIndicatorWidget
         android:id="@+id/widget_horizontal_situation_indicator"
         android:layout_width="350dp"
@@ -30,6 +25,7 @@
         app:layout_constraintStart_toEndOf="@+id/waypoint_button_list"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintWidth_percent="0.85">
+
 
         <FrameLayout
             android:id="@+id/main_window"
@@ -191,7 +187,8 @@
                 android:text="航线规划"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_start_gohome_spf" />
+                app:layout_constraintTop_toBottomOf="@+id/btn_start_gohome_spf"
+                android:visibility="visible"/>
 
             <Button
                 android:id="@+id/btn_input_kml_spf"
@@ -199,7 +196,16 @@
                 android:text="导入KML"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_waylineplan_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_waylineplan_spf"
+                android:visibility="visible"/>
+
+            <Button
+                android:id="@+id/btn_open_simulator"
+                style="@style/main_fragment_btn"
+                android:text="打开模拟"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_input_kml_spf"/>
 
 
 <!--            <Button-->
@@ -216,7 +222,8 @@
                 android:text="起飞"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_input_kml_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_open_simulator"
+                android:visibility="visible"/>
 
             <Button
                 android:id="@+id/btn_terrain_following_spf"
@@ -224,7 +231,8 @@
                 android:text="仿地飞行"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_fly_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_fly_spf"
+                android:visibility="visible"/>
 
 
 
@@ -234,7 +242,8 @@
                 android:text="暂停任务"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_terrain_following_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_terrain_following_spf"
+                android:visibility="visible"/>
 
 
 
@@ -244,7 +253,8 @@
                 android:text="断点续飞"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_stop_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_stop_spf"
+                android:visibility="visible"/>
 
             <Button
                 android:id="@+id/btn_take_photo_spf"
@@ -252,7 +262,8 @@
                 android:text="拍照"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_breakpoint_resume_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_breakpoint_resume_spf"
+                android:visibility="visible"/>
 
             <Button
                 android:id="@+id/btn_download_photo_spf"
@@ -260,7 +271,8 @@
                 android:text="下载照片"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_take_photo_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_take_photo_spf"
+                android:visibility="visible"/>
 
             <Button
                 android:id="@+id/btn_localcomputation_spf"
@@ -268,7 +280,8 @@
                 android:text="本地计算"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_download_photo_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_download_photo_spf"
+                android:visibility="visible"/>
 
             <Button
                 android:id="@+id/btn_toggle_map"
@@ -276,7 +289,18 @@
                 android:text="切换地图"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_localcomputation_spf"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_localcomputation_spf"
+                android:visibility="visible"/>
+
+
+
+            <Button
+                android:id="@+id/btn_home_page"
+                style="@style/main_fragment_btn"
+                android:text="首页"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_toggle_map"/>
 
             <Button
                 android:id="@+id/btn_zhanwei"
@@ -284,7 +308,7 @@
                 android:text="占位"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/btn_toggle_map"/>
+                app:layout_constraintTop_toBottomOf="@+id/btn_home_page"/>
 
 
 

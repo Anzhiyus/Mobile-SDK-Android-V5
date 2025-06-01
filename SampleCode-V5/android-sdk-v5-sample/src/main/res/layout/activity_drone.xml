@@ -6,37 +6,72 @@
     android:layout_height="match_parent"
     tools:context=".DroneActivity">
 
-
     <LinearLayout
+        android:id="@+id/main_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="horizontal">
-<!--        <Button-->
-<!--            android:id="@+id/btn_take_photo"-->
-<!--            android:layout_width="match_parent"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:text="拍照"-->
-<!--            android:textColor="@color/black"/>-->
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:visibility="visible" >
 
-<!--        <Button-->
-<!--            android:id="@+id/btn_download"-->
-<!--            android:layout_width="match_parent"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:text="下载照片"-->
-<!--            android:onClick="initDownloadPhoto"-->
-<!--            android:textColor="@color/black"/>-->
+        <!-- 标题 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="无人机控制中心"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="32dp" />
 
-        <FrameLayout
-            android:id="@+id/fragment_container"
+        <Button
+            android:id="@+id/btn_waypoint_planning"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="wrap_content"
+            android:text="航线规划"
+            android:textColor="@color/black"/>
+        <Button
+            android:id="@+id/btn_waypoint_flight"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="航线飞行"
+            android:textColor="@color/black"/>
+        <Button
+            android:id="@+id/btn_manual_flight"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="手动飞行"
+            android:textColor="@color/black"/>
+        <Button
+            android:id="@+id/btn_file_manage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="文件管理"
+            android:textColor="@color/black"/>
+        <Button
+            android:id="@+id/btn_indoor_sim"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="室内模拟"
+            android:textColor="@color/black"/>
 
-            <!-- 这个容器将用于显示 FragmentA -->
+<!--        <FrameLayout-->
+<!--            android:id="@+id/fragment_container"-->
+<!--            android:layout_width="match_parent"-->
+<!--            android:layout_height="match_parent">-->
+<!--        </FrameLayout>-->
+        <!-- Fragment 容器（默认隐藏，点击按钮后显示） -->
+        <!-- Fragment 容器（默认隐藏，点击按钮后显示） -->
 
-        </FrameLayout>
 
     </LinearLayout>
 
+    <!-- Fragment 容器（全屏大小，默认隐藏） -->
+    <FrameLayout
+        android:id="@+id/fragment_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
 
 
 
